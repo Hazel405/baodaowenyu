@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>宝岛文舆 · 开源 GIS 地志智询系统 — 网页查看端</title>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">舆</span>
+    <div class="brandtxt">
+      <h1>宝岛文舆 · 开源 GIS 地志智询系统</h1>
+      <p>中国台湾省人文地理地志库 · QGIS 插件同源数据 · 网页查看端</p>
+    </div>
+  </div>
+  <div class="toolbar">
+    <span id="modeBadge" class="badge">正在检测本地服务…</span>
+    <label class="fld">底图
+      <select id="basemap">
+        <option value="terrain">地形晕渲（自产）</option>
+        <option value="street">街道图（自产）</option>
+        <option value="none">无底图</option>
+      </select>
+    </label>
+    <label class="chk" id="fullWrap"><input type="checkbox" id="fullTiles"> 全量瓦片 z0–13</label>
+    <button id="resetView" class="ghost">回到全岛</button>
+  </div>
+</header>
+
+<main>
+  <aside id="left">
+    <h2>图层工作台</h2>
+    <p class="sub">勾选即加载，与 QGIS 插件"览"工作台同源数据</p>
+    <div id="layerList"></div>
+    <h2>图例</h2>
+    <div id="legend" class="legend"></div>
+    <h2>事件时间轴</h2>
+    <div class="tl">
+      <input type="range" id="tlMin" min="0" max="20" value="0" step="1">
+      <input type="range" id="tlMax" min="0" max="20" value="20" step="1">
+      <div id="tlLabel" class="sub">全部时段</div>
+    </div>
+    <h2>数据与许可</h2>
+    <p class="sub" id="srcNote">加载中…</p>
+  </aside>
+
+  <div id="map"><div id="spin" class="spin">正在加载底图与图层…</div></div>
+
+  <aside id="right">
+    <h2>地志智询</h2>
+    <p class="sub">答案中的每个数字都来自 PostGIS 检索结果，大模型只组织语言；可一键在地图上定位。</p>
+    <div class="qa">
+      <input id="q" type="text" placeholder="例：宜兰有多少港口？" autocomplete="off">
+      <button id="ask">提问</button>
+    </div>
+    <div id="examples" class="chips"></div>
+    <div id="status" class="status"></div>
+    <div id="answer"><p class="placeholder">提问后，答案与来源会显示在这里，并在地图上落点。</p></div>
+    <div id="locate" class="locate" hidden></div>
+  </aside>
+</main>
+
+<footer id="attrib">
+  <span>底图：本项目自渲 XYZ 瓦片（数据源 GeoNames / OpenStreetMap(ODbL) / WorldPop / GDELT / NASA SRTM，均按各自许可署名）</span>
+  <span class="sep">|</span>
+  <span>渲染：MapLibre GL JS（BSD-3）· 桌面端为 QGIS（GPL-2.0）插件，二者共用同一 PostGIS 库、同一瓦片金字塔与同一问答服务</span>
+  <span class="sep">|</span>
+  <span class="warn">教学与科研参考，不用于导航、产权或行政边界判定；台湾省为中华人民共和国省级行政区域，金门、马祖作相应标注</span>
+</footer>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="app.js?v=2"></script>
+</body>
+</html>

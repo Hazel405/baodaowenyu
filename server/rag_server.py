@@ -132,6 +132,10 @@ def classify(q):
 S2T = str.maketrans("兰台莲花东云梦县里斗阿崇庄处乡号湾极与", "蘭台蓮花東雲夢縣裡斗阿崇莊處鄉號灣極與")
 def s2t(w):
     return w.translate(S2T)
+# 反向表（繁→简）：/api/locate 需把库内繁体别名与简体提问互相归一
+T2S = str.maketrans({v: k for k, v in S2T.items()})
+def t2s(w):
+    return w.translate(T2S)
 
 # boundary.name 英文→中文县市名（admin1/admin2 实为 GeoNames 代码，中文归属一律空间推导）
 EN2CN = {"Taipei": "台北市", "NewTaipei": "新北市", "Taoyuan": "桃园市", "Taichung": "台中市",
@@ -423,6 +427,150 @@ def q_attention(q, ents):
 
 class Ask(BaseModel):
     question: str
+
+
+class Locate(BaseModel):
+    names: list
+    county: str = ""
+
+
+# ───────────────────────── Web 查看端接口（矢量瓦片 / 图层元数据 / 实体定位）
+# 白名单机制：只有下列民用要素表可经接口对外提供，osm_restricted 等非民用要素表一律不出现。
+def _tile_bounds(z, x, y):
+    """瓦片号 → (4326 经纬度范围, 3857 米范围)，用于索引过滤与 MVT 裁剪。"""
+    import math
+    n = 2.0 ** z
+    lon0, lon1 = x / n * 360.0 - 180.0, (x + 1) / n * 360.0 - 180.0
+    lat0 = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
+    lat1 = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
+    R = 6378137.0
+    return ((lon0, lat0, lon1, lat1),
+            (20037504.27 * (x / n * 2 - 1), 20037504.27 * (1 - (y + 1) / n * 2),
+             20037504.27 * ((x + 1) / n * 2 - 1), 20037504.27 * (1 - y / n * 2)))
+
+
+# props 为 MVT 携带的属性列；simplify=True 时按层级做 ST_Simplify；order 用于要素上限截断时保大头。
+MVT_LAYERS = {
+    "pop_county": dict(table="tw.pop_county", props=["county_cn AS name", "pop"], geom="geom",
+                       kind="polygon", label="县市人口", minzoom=3, simplify=True, order="pop DESC", limit=64),
+    "town": dict(table="tw.pop_town", props=["town AS name", "pop"], geom="geom",
+                 kind="polygon", label="乡镇人口", minzoom=7, simplify=True, order="pop DESC", limit=400),
+    "county_line": dict(table="tw.boundary", props=["name"], geom="geom",
+                        kind="polygon", label="县市界", minzoom=3, simplify=True, where="level=2", limit=64),
+    "town_line": dict(table="tw.admin_osm", props=["name"], geom="geom",
+                      kind="polygon", label="乡镇界", minzoom=8, simplify=True, where="level=8", limit=400),
+    "roads": dict(table="tw.roads", props=["class", "name"], geom="geom",
+                  kind="line", label="道路", minzoom=6, simplify=True, order="class", limit=3000,
+                  where="class IN ('motorway','trunk','primary','secondary')"),
+    "rail": dict(table="tw.rail", props=["kind", "name"], geom="geom",
+                 kind="line", label="铁路", minzoom=7, simplify=True, limit=1500),
+    "water_line": dict(table="tw.osm_water_line", props=["wclass", "name"], geom="geom",
+                       kind="line", label="水系", minzoom=7, simplify=True, limit=3000,
+                       where="wclass IN ('river','stream')"),
+    "water_poly": dict(table="tw.osm_water_poly", props=["kind", "name"], geom="geom",
+                       kind="polygon", label="湖库", minzoom=6, simplify=True, limit=1200,
+                       where="kind IN ('reservoir','lake','water','riverbank')"),
+    "cities": dict(table="tw.cities_major", props=["name_zh AS name", "population AS pop"], geom="geom",
+                   kind="point", label="主要城市", minzoom=4, limit=64),
+    "places": dict(table="tw.gaz_tw", props=["name", "population AS pop", "fclass AS kind"], geom="geom",
+                   kind="point", label="聚落点", minzoom=9, order="population DESC NULLS LAST", limit=1500,
+                   where="fclass='P'"),
+    "peaks": dict(table="tw.gaz_tw", props=["name", "elev_m AS elev", "fclass AS kind"], geom="geom",
+                  kind="point", label="山峰会堂", minzoom=9, order="elev_m DESC NULLS LAST", limit=800,
+                  where="fclass='T'"),
+    "ports": dict(table="tw.ports", props=["name", "kind"], geom="geom",
+                  kind="point", label="港口", minzoom=8, order="name", limit=800),
+    "power": dict(table="tw.power_capacity", props=["name", "fuel", "cap_mw"], geom="geom",
+                  kind="point", label="电厂", minzoom=9, order="cap_mw DESC NULLS LAST", limit=800),
+    "events": dict(table="tw.events", props=["to_char(sqldate,'YYYY-MM-DD') AS date", "root_name AS theme",
+                                             "mentions", "geo_name AS place"], geom="geom",
+                   kind="point", label="事件点", minzoom=5, order="mentions DESC", limit=2500,
+                   where="sqldate >= '2024-01-01'"),
+}
+
+
+@app.get("/api/layers")
+def api_layers():
+    """前端图层面板的元数据来源（含中文标签、几何类型、可见层级）。"""
+    return [{"id": k, "label": v["label"], "kind": v["kind"], "minzoom": v["minzoom"],
+             "fields": [p.split(" AS ")[-1].split()[0] for p in v["props"]]}
+            for k, v in MVT_LAYERS.items()]
+
+
+@app.get("/mvt/{name}/{z}/{x}/{y}.pbf")
+def mvt(name: str, z: int, x: int, y: int):
+    spec = MVT_LAYERS.get(name)
+    if not spec or z < spec["minzoom"] or z > 14:
+        return Response(status_code=404)
+    (lon0, lat0, lon1, lat1), (minx, miny, maxx, maxy) = _tile_bounds(z, x, y)
+    # 1 瓦片单位 ≈ 40075016/(2^z*4096) 米；低层级简化，高层级保原细节
+    tol = 40075016.686 / (2 ** z * 4096) * (2 if z < 11 else 0)
+    g = spec["geom"]
+    sel = ", ".join(spec["props"])
+    out_cols = ", ".join(p.split(" AS ")[-1].split()[0] for p in spec["props"])   # 内层已改名，外层只能引别名
+    where = spec.get("where", "true")
+    order = f'ORDER BY {spec["order"]}' if spec.get("order") else ""
+    inner = (f'SELECT ST_Transform({g},3857) AS g, {sel} FROM {spec["table"]} '
+             f'WHERE {where} AND ST_Intersects({g}, ST_MakeEnvelope({lon0},{lat0},{lon1},{lat1},4326)) '
+             f'{order} LIMIT {spec["limit"]}')
+    simp = f'ST_Simplify(g,{tol})' if spec.get("simplify") and tol > 0 else 'g'
+    # 外层只带属性列与裁剪后的 geom，避免中间几何列 g 混进 MVT 属性
+    sql = (f"SELECT ST_AsMVT(m,'{name}',4096,'geom') FROM ("
+           f"SELECT ST_AsMVTGeom({simp},ST_MakeEnvelope({minx},{miny},{maxx},{maxy},3857),4096,64,true) AS geom,{out_cols} "
+           f"FROM ({inner}) s WHERE g IS NOT NULL) m")
+    try:
+        cur = get_conn().cursor()
+        cur.execute(sql)
+        row = cur.fetchone()
+    except Exception as e:
+        return Response(content=("MVT error: " + str(e)[:200]).encode(), status_code=500)
+    buf = bytes(row[0]) if row and row[0] else b""
+    if not buf:
+        return Response(status_code=204)
+    return Response(content=buf, media_type="application/x-protobuf",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.post("/api/locate")
+def api_locate(body: Locate):
+    """实体名 → 点位（问答联动用）：别名简繁双向校验 + 空间反查县市/乡镇，附地名归属。"""
+    names = [str(n).strip() for n in body.names if n and len(str(n).strip()) >= 2][:8]
+    if not names:
+        return {"points": [], "note": "无实体"}
+    cands = sorted({w for n in names for w in (n, s2t(n), t2s(n))})
+    county = (body.county or "").strip()
+    cur = get_conn().cursor()
+    sql = """SELECT COALESCE(a.alt, g.name), g.name, round(ST_Y(g.geom)::numeric,4), round(ST_X(g.geom)::numeric,4),
+                    cb.name, tb.name, g.fclass, g.elev_m, COALESCE(g.population,0)
+             FROM tw.gaz_tw g
+             LEFT JOIN tw.gaz_alias a ON a.geonameid = g.geonameid AND a.alt = ANY(%s)
+             LEFT JOIN tw.boundary cb ON cb.level=2 AND ST_Within(g.geom, cb.geom)
+             LEFT JOIN tw.admin_osm tb ON tb.level=8 AND ST_Within(g.geom, tb.geom)
+             WHERE (g.name = ANY(%s) OR a.alt IS NOT NULL)"""
+    args = [cands, cands]
+    if county:
+        sql += " AND cb.name = ANY(%s)"
+        en = [k for k, v in EN2CN.items() if county in (v, s2t(v), t2s(v))]
+        args.append(en or [county])
+    sql += " ORDER BY COALESCE(g.population,0) DESC NULLS LAST LIMIT 12"
+    try:
+        cur.execute(sql, args)
+        rows = cur.fetchall()
+    except Exception as e:
+        return {"points": [], "note": str(e)[:120]}
+    pts = [{"alias": r[0], "name": r[1], "lat": float(r[2]), "lon": float(r[3]),
+            "county_en": r[4], "county": county_cn(r[4]) if r[4] else "", "town": r[5] or "",
+            "fclass": r[6], "elev_m": r[7], "population": int(r[8] or 0)} for r in rows]
+    if not pts:  # 退而求其次：把实体当县市名给质心
+        en = [k for k, v in EN2CN.items() if any(c in (v, s2t(v), t2s(v)) for c in cands)]
+        if en:
+            cur.execute("SELECT name, round(ST_Y(ST_PointOnSurface(geom))::numeric,4),"
+                        " round(ST_X(ST_PointOnSurface(geom))::numeric,4), 4 FROM tw.boundary"
+                        " WHERE level=2 AND name = ANY(%s)", (en,))
+            pts = [{"alias": r[0], "name": county_cn(r[0]), "lat": float(r[1]), "lon": float(r[2]),
+                    "county_en": r[0], "county": county_cn(r[0]), "town": "", "fclass": "county",
+                    "elev_m": None, "population": 0} for r in cur.fetchall()]
+    return {"points": pts}
 
 
 @app.post("/api/ask")
