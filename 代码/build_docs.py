@@ -13,9 +13,17 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-spec = importlib.util.spec_from_file_location("gd", os.path.join(HERE, "gen_docs.py"))
-gd = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(gd)
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, name + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+gd = _load("gen_docs")        # 技术报告（参赛材料）
+go = _load("gen_odds")        # 胜率评估（内部文档，.gitignore 已排除，勿进仓库/参赛包）
 
 R = os.path.join(HERE, "_tmp_report.docx")
 O = os.path.join(HERE, "_tmp_odds.docx")
@@ -33,7 +41,7 @@ def put(src, dst):
 
 if __name__ == "__main__":
     gd.build_report(R)
-    gd.build_odds(O)
+    go.build_odds(O)
     v1 = os.path.join(ROOT, "技术报告_宝岛文舆_v1.docx")
     if not put(R, v1):
         put(R, os.path.join(ROOT, "技术报告_宝岛文舆_v2.docx"))

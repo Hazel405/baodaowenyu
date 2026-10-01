@@ -1,10 +1,14 @@
-# 内部资料（含敏感字样表述）——绝不进仓库/参赛包
+# 内部资料与内部文档——不随开源仓库/参赛包分发
 docs/_internal/
+代码/gen_odds.py
+开发方案_*.md
+获奖胜率评估_*.docx
 
 # 大文件不入库，用网盘/构建脚本分发（见 data/DATA_SOURCES.md）
 data/raw/
 data/derived/
 data/db/*.dump
+data/export/
 basemap/
 demo_contest/
 
@@ -14,17 +18,15 @@ __pycache__/
 *.log
 eval/outputs/
 scripts/*.msi
+scripts/probe*.py
+scripts/probe*.bat
+docs/_pagecheck/
+代码/_tmp_*.docx
 
 # 敏感
 *.key
 *.env
 config_local.py
 
-# 内部/含非民用要素导出脚本（绝不入库）
+# 非民用要素相关脚本与导出（绝不入库）
 pipeline/_internal/
-docs/_internal/
-data/export/
-
-# 排版自检产物（LibreOffice 转 PDF 用于核页数）
-docs/_pagecheck/
-代码/_tmp_*.docx
