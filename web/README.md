@@ -18,6 +18,11 @@ QGIS 插件是作品主体；本目录是**同一套数据与服务的轻量查�
 ```bat
 scripts\start_web_demo.bat          :: 起 :8090 与 :8600 并打开浏览器（完整体验）
 python server\serve_tiles.py        :: 只起静态服务，即离线模式
+```
+
+已在实时模式时想演示离线降级，直接访问 `http://127.0.0.1:8090/?offline=1`（强制走快照，不必停服务）。
+
+```bat
 python pipeline\export_web_data.py  :: 重新导出快照（改了库表或字段后）
 python pipeline\build_web_tiles.py  :: 重新打包低层级瓦片
 ```

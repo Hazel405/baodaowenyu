@@ -66,11 +66,13 @@ function fetchT(url, opt, ms) {
   const t = setTimeout(() => c.abort(), ms);
   return fetch(url, Object.assign({ signal: c.signal }, opt)).finally(() => clearTimeout(t));
 }
+const FORCE_OFF = new URLSearchParams(location.search).has("offline");   // ?offline=1 强制演示离线模式，不必停服务
 async function detectMode() {
+  if (FORCE_OFF) return "off";
   try {
-    const r = await fetchT(API + '/api/health', {}, 1200);
-    return r.ok ? 'live' : 'off';
-  } catch (e) { return 'off'; }
+    const r = await fetchT(API + "/api/health", {}, 1200);
+    return r.ok ? "live" : "off";
+  } catch (e) { return "off"; }
 }
 
 /* ───────── 数据源 ───────── */
