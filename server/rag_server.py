@@ -21,9 +21,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-PGCTL = r"H:\tools\conda_env_pg\Library\bin\pg_ctl.exe"
-PGDATA = r"H:\tools\pgdata_htm2026"
-OLLAMA = "http://127.0.0.1:11434"
+# ── 环境配置：默认沿用本机 H 盘的 PG 实例；换机时改 config_local.py（.gitignore 已排除）或环境变量
+def _load_cfg():
+    cfg = {"PGCTL": r"H:\tools\conda_env_pg\Library\bin\pg_ctl.exe",
+           "PGDATA": r"H:\tools\pgdata_htm2026",
+           "HOST": "127.0.0.1", "PORT": 5433, "DB": "tw", "USER": "postgres", "PWD": "",
+           "OLLAMA": "http://127.0.0.1:11434", "PG_LOG": r"H:\tools\pg_start.log"}
+    env = {"PGCTL": "BAODAO_PGCTL", "PGDATA": "BAODAO_PGDATA", "HOST": "BAODAO_PG_HOST",
+           "PORT": "BAODAO_PG_PORT", "DB": "BAODAO_PG_DB", "USER": "BAODAO_PG_USER",
+           "PWD": "BAODAO_PG_PASSWORD", "OLLAMA": "BAODAO_OLLAMA"}
+    for k, var in env.items():
+        v = os.environ.get(var)
+        if v:
+            cfg[k] = int(v) if k == "PORT" else v
+    for d in (os.path.dirname(os.path.abspath(__file__)), os.getcwd()):
+        if os.path.exists(os.path.join(d, "config_local.py")):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+            try:
+                from config_local import PG as local
+                cfg.update({str(k).upper(): v for k, v in dict(local).items()})
+                print("已载入 config_local.py")
+            except Exception as e:
+                print("config_local 读取失败：", str(e)[:100])
+            break
+    return cfg
+
+
+CFG = _load_cfg()
+PGCTL, PGDATA, OLLAMA = CFG["PGCTL"], CFG["PGDATA"], CFG["OLLAMA"]
 CN_REG = re.compile(r"[\u4e00-\u9fff]{2,6}")
 
 app = FastAPI(title="地志智询 · 台湾人文地理 RAG")
@@ -68,7 +94,8 @@ def get_conn():
         for attempt in range(3):
             ensure_pg()
             try:
-                _conn[0] = psycopg2.connect(host="127.0.0.1", port=5433, dbname="tw", user="postgres")
+                _conn[0] = psycopg2.connect(host=CFG["HOST"], port=CFG["PORT"], dbname=CFG["DB"],
+                                            user=CFG["USER"], password=CFG["PWD"])
                 _conn[0].autocommit = True
                 break
             except Exception:
@@ -79,14 +106,20 @@ def get_conn():
 
 
 def ensure_pg():
-    if os.path.exists(os.path.join(PGDATA, "postmaster.pid")):
+    """PG 已由服务/手动/容器管着就直接放行；只有本机存在 pg_ctl 与数据目录才尝试自启。"""
+    try:
+        socket.create_connection((CFG["HOST"], CFG["PORT"]), 1).close()
         return
+    except OSError:
+        pass
+    if not (os.path.exists(PGCTL) and os.path.isdir(PGDATA)):
+        return        # 换机时路径对不上也不在此处炸，交给 get_conn 的连接异常统一报
     with open("NUL", "w") as nul:
-        subprocess.run([PGCTL, "-D", PGDATA, "-o", "-p 5433", "-l", r"H:\tools\pg_start.log", "start"],
+        subprocess.run([PGCTL, "-D", PGDATA, "-o", f"-p {CFG['PORT']}", "-l", CFG["PG_LOG"], "start"],
                        stdout=nul, stderr=nul, timeout=60)
     for _ in range(30):
         try:
-            s = socket.create_connection(("127.0.0.1", 5433), 1)
+            s = socket.create_connection((CFG["HOST"], CFG["PORT"]), 1)
             s.close()
             break
         except OSError:

@@ -30,3 +30,6 @@ config_local.py
 
 # 非民用要素相关脚本与导出（绝不入库）
 pipeline/_internal/
+
+# 接手包（pipeline/make_handoff.py 生成的自包含快照，体积大且是仓库自身的副本）
+提交/

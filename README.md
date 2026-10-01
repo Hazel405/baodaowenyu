@@ -22,7 +22,8 @@ D:\宝岛文舆\
 │   ├── make_tiles_terrain.py                   地形层（gdaldem+gdal2tiles，z0-12 2,853 张）
 │   ├── make_hist_tiles.py                      历史舆图 GCP 纠正+切片
 │   ├── export_web_data.py                      网页离线快照 GeoJSON 导出（幂等）
-│   └── build_web_tiles.py                      随包低层级瓦片打包
+│   ├── build_web_tiles.py                      随包低层级瓦片打包
+│   └── make_handoff.py                         生成"接手包"快照（含红线自检与文件数校验）
 ├── basemap\                  自产瓦片金字塔 street/ terrain/ hillshade/ hist_*\
 ├── web\                      ★ 网页查看端（MapLibre，双模式：实时 MVT+问答 / 离线快照）
 │   ├── index.html app.js style.css README.md
@@ -30,12 +31,14 @@ D:\宝岛文舆\
 │   └── data\ tiles\          离线快照与低层级瓦片（由 pipeline 生成）
 ├── data\                     raw\ derived\ db\tw_20261001.dump\ + registry.csv + DATA_SOURCES.md
 ├── eval\                     30 题问答基准 + 300 条消歧评测 + 裸模型消融（eval_qa30.py）
-├── docs\                     数据字典、已知限制与改进项、演示分镜、合规自查、历史图摆渡清单
+├── docs\                     部署说明（接手必读）、已知限制与改进项、演示分镜、试用量表、历史图摆渡清单
 ├── submission\               8 项提交材料（对照规则逐件核销）
 └── scripts\                  start_services.bat / start_web_demo.bat / install_plugin.bat 一键脚本
 ```
 
 ## 快速开始（评审/答辩机）
+
+> 换机部署、数据库恢复、评测复跑、故障对照与红线，全部见 **`docs\部署说明.md`**（接手必读）。
 
 1. **零门槛看效果**：双击 `scripts\start_web_demo.bat` → 浏览器打开 http://127.0.0.1:8090/
    （只起静态服务即为离线模式：随包快照 + 自渲瓦片，不需要 PG/Ollama）；
