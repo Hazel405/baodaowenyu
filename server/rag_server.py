@@ -145,10 +145,13 @@ def county_cn(en):
 
 
 CN_STOP = {"多少", "人口", "哪里", "在哪", "介绍", "情况", "什么", "发生", "事件", "几个", "多少人口"}
-SPLIT_RE = re.compile(r"[ 的在个哪些哪什么有多少和与及或比了是有对从至约规模量类请帮介绍查属名型单元]")
+SPLIT_RE = re.compile(r"[ 的在个哪些哪什么有多少和与及或比了是对从至约规模量类请帮介绍查属名型单元]")
 def extract_entities(q):
     """从问题中提取候选实体：虚词切分 + 前缀扩展 + 停用词过滤 + 匹配库内已知名（优先）。"""
     cands = []
+    for pre in (q[:2], q[:3]):  # 问题前 2/3 字优先当实体（三和/和平/宜兰 等开头地名）
+        if re.fullmatch(r"[\u4e00-\u9fff]{2,3}", pre) and pre not in cands:
+            cands.append(pre)
     for p in SPLIT_RE.split(q):
         p = p.strip()
         for c in ([p] if len(p) >= 2 else []) + ([p[:2]] if len(p) >= 3 else []) + ([p[:3]] if len(p) > 3 else []):
@@ -164,7 +167,7 @@ def extract_entities(q):
         cur.execute("""SELECT DISTINCT alt FROM tw.gaz_alias WHERE alt = ANY(%s) LIMIT 2""",
                     ([w, s2t(w)],))
         for (alt,) in cur.fetchall():
-            if alt and alt not in out and (alt in q or q.startswith(alt) or alt == w):
+            if alt and alt not in out and (alt in q or s2t(alt) in q or q.startswith(alt) or alt == w or alt == s2t(w)):
                 out.append(alt)
     out = [x for x in out if not any(x != y and y.startswith(x) for y in out)]
     # 自由提问兜底：库内未命中时保留原文候选（让查询层自己做 ILIKE 模糊）
@@ -361,18 +364,32 @@ def q_facility(q, ents):
 def q_place(q, ents):
     cur = get_conn().cursor()
     out, sources = [], []
-    for e in ents[:2]:
-        cur.execute("""SELECT g.geonameid, g.name, g.fclass, g.fcode, cb.name, tb.name, g.population, g.elev_m,
+    SEL = """SELECT g.geonameid, g.name, g.fclass, g.fcode, cb.name, tb.name, g.population, g.elev_m,
             ST_Y(g.geom), ST_X(g.geom), a.alt
             FROM tw.gaz_alias a JOIN tw.gaz_tw g USING (geonameid)
             LEFT JOIN LATERAL (SELECT name FROM tw.boundary b
                                WHERE b.level=2 AND ST_Within(g.geom, b.geom) LIMIT 1) cb ON true
             LEFT JOIN LATERAL (SELECT name FROM tw.admin_osm o
-                               WHERE o.level=8 AND ST_Within(g.geom, o.geom) LIMIT 1) tb ON true
-            WHERE a.alt = ANY(%s) OR g.name ILIKE %s
-            ORDER BY g.population DESC NULLS LAST LIMIT 4""", ([e, s2t(e)], f"%{e}%"))
+                               WHERE o.level=8 AND ST_Within(g.geom, o.geom) LIMIT 1) tb ON true"""
+    # 问题点名县市 → 只取该县境内条目（防 LIMIT 按人口截掉小村）；无命中回退全域
+    cty = next((cn for cn in EN2CN.values() if cn in q), None)
+    for e in ents[:2]:
+        rows = []
+        if cty:
+            en = next((k for k, v in EN2CN.items() if v == cty), None)
+            if en:
+                cur.execute(SEL + """ WHERE (a.alt = ANY(%s) OR g.name ILIKE %s)
+                        AND ST_Within(g.geom, (SELECT geom FROM tw.boundary b
+                            WHERE b.level=2 AND b.name ~* %s LIMIT 1))
+                        ORDER BY g.population DESC NULLS LAST LIMIT 4""",
+                            ([e, s2t(e)], f"%{e}%", en))
+                rows = cur.fetchall()
+        if not rows:
+            cur.execute(SEL + """ WHERE a.alt = ANY(%s) OR g.name ILIKE %s
+                    ORDER BY g.population DESC NULLS LAST LIMIT 4""", ([e, s2t(e)], f"%{e}%"))
+            rows = cur.fetchall()
         seen = set()
-        for r in cur.fetchall():
+        for r in rows:
             if r[0] in seen:
                 continue
             seen.add(r[0])
@@ -438,7 +455,7 @@ def ask(body: Ask):
 
 用户问题：{q}
 
-要求：用中文简洁回答（不超过150字），数字必须来自查询结果；回答中禁止出现JSON原文、字段名或花括号，来源只写数据表名（如【来源：tw_demo_countypop】）；若查询结果含说明性文字（如数据缺口记档、口径说明），请如实转述其中的数字与结论，不要说"没有数据"。"""
+要求：用中文简洁回答（不超过150字），数字必须来自查询结果；回答中禁止出现JSON原文、字段名或花括号，来源只写数据表名（如【来源：tw_demo_countypop】）；若查询结果含说明性文字（如数据缺口记档、口径说明），请如实转述其中的数字与结论，不要说"没有数据"；若查询结果有多个同名条目，逐条列出各自的县市/乡镇与坐标，不要只挑一个。"""
     try:
         answer = ollama_gen("qwen3:8b", "/no_think\n" + prompt)
         answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.S).strip()
