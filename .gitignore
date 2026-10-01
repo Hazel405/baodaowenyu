@@ -23,3 +23,8 @@ config_local.py
 # 内部/含非民用要素导出脚本（绝不入库）
 pipeline/_internal/
 docs/_internal/
+data/export/
+
+# 排版自检产物（LibreOffice 转 PDF 用于核页数）
+docs/_pagecheck/
+代码/_tmp_*.docx

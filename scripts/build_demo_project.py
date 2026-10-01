@@ -4,7 +4,8 @@
 运行：scripts\\run_build_project.bat   产物：D:\\宝岛文舆\\demo_project.qgz + docs/figures/fig_demo_preview.png
 """
 import os
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
+if os.environ.get("DEMO_HEADLESS") == "1":      # 无头平台字体库为空，中文标注会变豆腐块，默认用 GUI 平台渲染
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
 from qgis.core import (QgsApplication, QgsProject, QgsRasterLayer, QgsVectorLayer, QgsDataSourceUri,
                        QgsRectangle, QgsCoordinateReferenceSystem, QgsMapSettings,
                        QgsMapRendererSequentialJob, QgsGraduatedSymbolRenderer, QgsRendererRange,
@@ -14,7 +15,16 @@ from qgis.core import (QgsApplication, QgsProject, QgsRasterLayer, QgsVectorLaye
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtCore import QSize, QSizeF
 
-app = QgsApplication([], False); app.initQgis()
+app = QgsApplication([], False)
+app.initQgis()
+from qgis.PyQt.QtGui import QFontDatabase
+_db = QFontDatabase()
+for _fp in ("C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf", "C:/Windows/Fonts/simsun.ttc"):
+    if os.path.exists(_fp):
+        _db.addApplicationFont(_fp)
+LABEL_FONT = next((f for f in ("Microsoft YaHei", "SimHei", "Noto Sans SC", "SimSun")
+                   if f in _db.families()), "Sans Serif")
+print("font families:", len(_db.families()), "| label font:", LABEL_FONT)
 TILE = "http://127.0.0.1:8090"
 PG = ("127.0.0.1", "5433", "tw", "postgres", "")
 proj = QgsProject.instance()
@@ -31,15 +41,25 @@ def vl(schema, tbl, filt=""):
 # 底图两层
 terrain = QgsRasterLayer(f"type=xyz&url={TILE}/terrain/%7Bz%7D/%7Bx%7D/%7By%7D.png", "地形晕渲", "wms")
 street = QgsRasterLayer(f"type=xyz&url={TILE}/street/%7Bz%7D/%7Bx%7D/%7By%7D.png", "街道图", "wms")
+# 街道瓦片在低层级（全岛视角）海面填充不一致，会出现棋盘格 → 仅缩放到都会尺度以下才显示
+street.setScaleBasedVisibility(True)
+street.setMaximumScale(320000)                 # 比例尺分母 >32 万（缩小过度）时不绘制
 proj.addMapLayers([terrain, street])
 
-# 县市人口分级设色（7 级，暖色系）
+# 县市人口分级设色（6 级，暖色系；半透明以透出下方地形晕渲）
 pop = vl("tw", "pop_county")
+
+
+def rgba(hexcol, alpha):
+    c = QColor(hexcol)
+    return f"{c.red()},{c.green()},{c.blue()},{alpha}"
+
+
 brk = [(0, 100000, "#fff5eb"), (100000, 300000, "#fee0c6"), (300000, 600000, "#fdae6b"),
        (600000, 1500000, "#fd8d3c"), (1500000, 2500000, "#e31a1c"), (2500000, 99999999, "#8c0d0e")]
 rngs = []
 for lo, hi, col in brk:
-    s = QgsFillSymbol.createSimple({"color": col + "cc", "outline_color": "60,40,30,200", "outline_width": "0.3"})
+    s = QgsFillSymbol.createSimple({"color": rgba(col, 205), "outline_color": "60,40,30,200", "outline_width": "0.3"})
     rngs.append(QgsRendererRange(lo, hi, s, f"{lo/10000:.0f}–{hi/10000:.0f}万" if hi < 9e7 else f">{lo/10000:.0f}万"))
 pop.setRenderer(QgsGraduatedSymbolRenderer("pop", rngs))
 pop.setCustomProperty("legend", True)
@@ -76,18 +96,18 @@ city.setRenderer(QgsSingleSymbolRenderer(QgsMarkerSymbol.createSimple(
 ls = QgsPalLayerSettings()
 ls.fieldName = "name_zh"
 tf = QgsTextFormat()
-tf.setFont(QFont("SimHei", 9))
+tf.setFont(QFont(LABEL_FONT, 9))
 tf.setSize(9)
-tf.setColor(QColor(30, 30, 30))
-bg = QgsTextBackgroundSettings()
-bg.setEnabled(True)
-bg.setSize(QSizeF(2.2, 1.6))
-bg.setFillColor(QColor(255, 255, 255, 170))
-bg.setStrokeColor(QColor(120, 120, 120, 120))
-tf.setBackground(bg)
+tf.setColor(QColor(45, 20, 15))
+tf.buffer().setEnabled(True)
+tf.buffer().setSize(1.4)
+tf.buffer().setColor(QColor(255, 255, 255, 235))
+tf.buffer().setJoinStyle(1)          # Qt.PenJoinStyle.RoundJoin
 ls.setFormat(tf)
 ls.placement = QgsPalLayerSettings.AroundPoint
 ls.dist = 1.2
+ls.allowDegradedLabels = False
+ls.preservePlace = True
 city.setLabeling(QgsVectorLayerSimpleLabeling(ls))
 city.setLabelsEnabled(True)
 proj.addMapLayer(city)
@@ -100,12 +120,13 @@ proj.addMapLayer(ev)
 
 # 工程 CRS 与默认可见范围（打开即定位台湾）
 proj.setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
-proj.writeEntry("Gui", "/CanvasColor", "170,211,223")   # 画布背景=海蓝，消白棋盘格
-proj.writeEntry("Gui", "/CanvasColorRedPart", "170")
-proj.writeEntry("Gui", "/CanvasColorGreenPart", "211")
-proj.writeEntry("Gui", "/CanvasColorBluePart", "223")
+proj.writeEntry("Gui", "/CanvasColor", "198,224,232")   # 画布背景=海蓝，消除海面空白格
+proj.writeEntry("Gui", "/CanvasColorRedPart", "198")
+proj.writeEntry("Gui", "/CanvasColorGreenPart", "224")
+proj.writeEntry("Gui", "/CanvasColorBluePart", "232")
 ms = QgsMapSettings()
-ms.setLayers(list(reversed(list(proj.mapLayers().values()))))  # 树序=自下而上，渲染列表=自上而下
+ms.setBackgroundColor(QColor(198, 224, 232))      # 预览海面底色（与工程画布色一致）
+ms.setLayers([l for l in reversed(list(proj.mapLayers().values())) if l.id() != street.id()])  # 预览不含街道瓦片（低层级海面棋盘格）
 ms.setDestinationCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
 ms.setExtent(QgsRectangle(119.3, 21.9, 122.5, 25.3))
 

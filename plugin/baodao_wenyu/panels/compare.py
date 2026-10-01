@@ -55,7 +55,8 @@ class CompareDialog(QDialog):
         pid = self.combo.currentData()
         if not os.path.isdir(os.path.join(BASMAP_ROOT, "hist_" + pid)):
             QMessageBox.information(self, "尚缺图幅",
-                                    "该历史图尚未入库（扫描件摆渡中）。\n可用替代：底图组选『航图 JNC 1998』与现状对比。")
+                                    "该历史图尚未入库（扫描件摆渡中，见 docs/历史舆图获取清单.md）。\n"
+                                    "可先用“览”工作台的街道图与地形晕渲两底图叠置，体验同一坐标系下的透明度卷帘机制。")
             return
         self.remove_hist()
         lyr = QgsRasterLayer(f"type=xyz&url={TILE_BASE}/hist_{pid}/%7Bz%7D/%7Bx%7D/%7By%7D.png", f"历史图·{pid}", "wms")

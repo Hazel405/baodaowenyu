@@ -53,12 +53,12 @@ class BaodaoWenyuPlugin:
 
     # ★ 一键打开预配好的演示工程（分级设色/标注/事件/路网全配好，打开即满屏）
     def open_demo(self):
-        from qgis.PyQt.QtCore import QFileInfo
         qgz = r"D:\宝岛文舆\demo_project.qgz"
         if not os.path.exists(qgz):
             self.iface.messageBar().pushWarning("宝岛文舆", "演示工程未生成：请先运行 scripts\\run_build_project.bat")
             return
-        QgsProject.instance().read(QFileInfo(qgz))
+        QgsProject.instance().clear()
+        self.iface.openProject(qgz)
         from qgis.core import QgsRectangle
         self.iface.mapCanvas().setExtent(QgsRectangle(119.3, 21.9, 122.5, 25.3))
         self.iface.mapCanvas().refresh()

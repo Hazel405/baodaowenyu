@@ -68,8 +68,13 @@ render([terrain, county, cities], whole, 1200, 900, os.path.join(OUT, "fig_lan_i
 # 览·台北都会（街道底图 + 高速/快速路）
 taipei = QgsRectangle(121.30, 24.90, 121.75, 25.20)
 render([street, roads], taipei, 1200, 900, os.path.join(OUT, "fig_lan_taipei.png"))
-# 较·同域双底图（地形叠街道半透明=卷帘证据）
+# 较·同域双底图（全岛尺度：地形晕渲叠街道，均为自产瓦片；历史时点瓦片入库后按同一机制卷帘）
+WANT = sys.argv[1] if len(sys.argv) > 1 else "all"
 render([street, terrain], whole, 1200, 900, os.path.join(OUT, "fig_jiao_overlay.png"))
+if WANT == "jiao":
+    app.exitQgis()
+    print("CAPTURE DONE (jiao only)")
+    sys.exit(0)
 
 # ── 询·问答面板（真实调用 :8600 一次） ──
 from baodao_wenyu.panels.qa import QaDialog

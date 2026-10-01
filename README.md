@@ -18,7 +18,7 @@ D:\宝岛文舆\
 ├── pipeline\                 开源数据→PostGIS→瓦片 全链脚本（可一键重建）
 │   ├── import_phase1.py import_boundary.py     地名/别名/边界入库
 │   ├── render_tiles.py                         街道图自渲（PostGIS→PIL，z0-13 20,854 张）
-│   ├── make_tiles_terrain.py                   地形层（gdaldem+gdal2tiles，z0-11 2,853 张）
+│   ├── make_tiles_terrain.py                   地形层（gdaldem+gdal2tiles，z0-12 2,853 张）
 │   ├── make_hist_tiles.py                      历史舆图 GCP 纠正+切片
 │   └── make_contest_demo.py                    参赛版清洗（去非民用/内部字样，幂等）
 ├── basemap\                  自产瓦片金字塔 street/ terrain/ hillshade/ hist_*\
