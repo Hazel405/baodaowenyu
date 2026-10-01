@@ -1,0 +1,18 @@
+[general]
+name=宝岛文舆 · 开源GIS地志智询
+qgisMinimumVersion=3.30
+description=中国台湾省人文地理地志智询：自产XYZ底图、PostGIS人文图层工作台、防幻觉RAG问答联动定位、历史舆图时间叠合。数据源 GeoNames/OSM/SRTM 开放数据，全部可溯源。
+version=0.1.0
+author=Baodao WenYu Team
+email=tbd@example.org
+about=https://github.com/tbd/baodao-wenyu
+tracker=https://github.com/tbd/baodao-wenyu/issues
+repository=https://github.com/tbd/baodao-wenyu
+tags=analysis,plugin,chinese,taiwan,gazetteer,postgis,rag
+homepage=https://github.com/tbd/baodao-wenyu
+category=Plugins
+icon=icon.png
+experimental=True
+deprecated=False
+server=False
+hasProcessingProvider=no

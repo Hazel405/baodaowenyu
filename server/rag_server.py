@@ -1,0 +1,479 @@
+# -*- coding: utf-8 -*-
+"""台湾人文地理 RAG 服务（结构化检索优先 + qwen3:8b 生成 + 来源回链）。
+架构：用户问题 → qwen3:0.6b 意图分类 → PostGIS 结构化查询（真实数据毫秒级）
+     → 上下文组装（含来源标注）→ qwen3:8b 生成 → 带来源回答。
+启动：python rag_server.py（起 tw 库 + FastAPI :8600）"""
+import io
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+import urllib.request
+
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
+
+PGCTL = r"H:\tools\conda_env_pg\Library\bin\pg_ctl.exe"
+PGDATA = r"H:\tools\pgdata_htm2026"
+OLLAMA = "http://127.0.0.1:11434"
+CN_REG = re.compile(r"[\u4e00-\u9fff]{2,6}")
+
+app = FastAPI(title="地志智询 · 台湾人文地理 RAG")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+)
+
+# 自定义请求验证异常处理：
+# Windows 默认 GBK 终端下 curl 会把中文转成 GBK 字节流，FastAPI 解析失败后
+# 把 raw bytes 塞进 error dict，pydantic error message 含这些字节 → jsonable_encoder
+# 用 utf-8 decode 崩。此 handler 兜底返回安全字符串。
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse as _JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_validation_exception_handler(request: Request, exc: RequestValidationError):
+    try:
+        return _JSONResponse(
+            status_code=400,
+            content={"detail": str(exc.errors())},
+        )
+    except Exception:
+        return _JSONResponse(
+            status_code=400,
+            content={"detail": "Request body could not be parsed. Windows 用户请用 chcp 65001 切换终端到 UTF-8，或用 python -c 'import urllib.request; ...' 发请求。"},
+        )
+
+_conn = [None]
+
+
+def get_conn():
+    import psycopg2
+    if _conn[0] is not None:
+        try:
+            _conn[0].cursor().execute("SELECT 1")
+        except Exception:
+            _conn[0] = None
+    if _conn[0] is None:
+        for attempt in range(3):
+            ensure_pg()
+            try:
+                _conn[0] = psycopg2.connect(host="127.0.0.1", port=5433, dbname="tw", user="postgres")
+                _conn[0].autocommit = True
+                break
+            except Exception:
+                time.sleep(5)
+        else:
+            raise RuntimeError("PG 无法启动/连接（重试 3 次）")
+    return _conn[0]
+
+
+def ensure_pg():
+    if os.path.exists(os.path.join(PGDATA, "postmaster.pid")):
+        return
+    with open("NUL", "w") as nul:
+        subprocess.run([PGCTL, "-D", PGDATA, "-o", "-p 5433", "-l", r"H:\tools\pg_start.log", "start"],
+                       stdout=nul, stderr=nul, timeout=60)
+    for _ in range(30):
+        try:
+            s = socket.create_connection(("127.0.0.1", 5433), 1)
+            s.close()
+            break
+        except OSError:
+            time.sleep(1)
+
+
+def ollama_gen(model, prompt, timeout=900):
+    req = urllib.request.Request(OLLAMA + "/api/generate",
+        data=json.dumps({"model": model, "prompt": prompt, "stream": False,
+                         "think": False, "keep_alive": "30m",
+                         "options": {"temperature": 0.2, "num_predict": 320}}).encode())
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read()).get("response", "")
+
+
+def ollama_embed(text):
+    req = urllib.request.Request(OLLAMA + "/api/embed",
+        data=json.dumps({"model": "bge-m3", "input": text}).encode())
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.loads(r.read()).get("embeddings", [[]])[0]
+
+
+# ── 意图分类（关键词规则；place 放最后兜底，避免"在哪/哪天"误劫持设施与关注度问题） ──
+INTENTS = [
+    ("population", ["人口", "多少人", "人口数", "多少人住", "人口规模"]),
+    ("event", ["事件", "冲突", "冲突", "抗议", "发生什么", "态势", "活动", "报道", "GDELT"]),
+    ("facility", ["机场", "港口", "码头", "电站", "变电站", "铁路", "车站", "设施", "电厂", "乡镇", "行政区"]),
+    ("attention", ["关注度", "舆情", "热度", "趋势", "新闻", "峰值"]),
+    ("place", ["哪里", "在哪", "位置", "坐标", "地名", "什么叫", "是什么地方"]),
+]
+
+
+def classify(q):
+    if "属于" in q or "哪个乡镇" in q or "何乡镇" in q:
+        return "place"
+    for name, kws in INTENTS:
+        if any(k in q for k in kws):
+            return name
+    return "place"
+
+
+# 台湾地名常用简→繁对照（GeoNames 中文别名以繁体为主，简体提问需转换后匹配）
+S2T = str.maketrans("兰台莲花东云梦县里斗阿崇庄处乡号湾极与", "蘭台蓮花東雲夢縣裡斗阿崇莊處鄉號灣極與")
+def s2t(w):
+    return w.translate(S2T)
+
+# boundary.name 英文→中文县市名（admin1/admin2 实为 GeoNames 代码，中文归属一律空间推导）
+EN2CN = {"Taipei": "台北市", "NewTaipei": "新北市", "Taoyuan": "桃园市", "Taichung": "台中市",
+         "Tainan": "台南市", "Kaohsiung": "高雄市", "Keelung": "基隆市", "HsinchuCity": "新竹市",
+         "HsinchuCounty": "新竹县", "Changhua": "彰化县", "Miaoli": "苗栗县", "Nantou": "南投县",
+         "Yulin": "云林县", "ChiayiCity": "嘉义市", "ChiayiCounty": "嘉义县", "Pingtung": "屏东县",
+         "Yilan": "宜兰县", "Hualien": "花莲县", "Taitung": "台东县", "Penghu": "澎湖县",
+         "Kinmen": "金门县", "Lienkiang": "连江县"}
+def county_cn(en):
+    return EN2CN.get((en or "").replace(" ", ""), en or "")
+
+
+CN_STOP = {"多少", "人口", "哪里", "在哪", "介绍", "情况", "什么", "发生", "事件", "几个", "多少人口"}
+SPLIT_RE = re.compile(r"[ 的在个哪些哪什么有多少和与及或比了是有对从至约规模量类请帮介绍查属名型单元]")
+def extract_entities(q):
+    """从问题中提取候选实体：虚词切分 + 前缀扩展 + 停用词过滤 + 匹配库内已知名（优先）。"""
+    cands = []
+    for p in SPLIT_RE.split(q):
+        p = p.strip()
+        for c in ([p] if len(p) >= 2 else []) + ([p[:2]] if len(p) >= 3 else []) + ([p[:3]] if len(p) > 3 else []):
+            if c and len(c) >= 2 and c not in CN_STOP and c not in cands:
+                cands.append(c)
+    for w in CN_REG.findall(q):
+        if 2 <= len(w) <= 4 and w not in CN_STOP and w not in cands:
+            cands.append(w)
+    cur = get_conn().cursor()
+    out = []
+    for w in cands[:10]:
+        # 只接受库里真实存在的别名（高雄→Kaohsiung），拒绝噪声；简繁双查
+        cur.execute("""SELECT DISTINCT alt FROM tw.gaz_alias WHERE alt = ANY(%s) LIMIT 2""",
+                    ([w, s2t(w)],))
+        for (alt,) in cur.fetchall():
+            if alt and alt not in out and (alt in q or q.startswith(alt) or alt == w):
+                out.append(alt)
+    out = [x for x in out if not any(x != y and y.startswith(x) for y in out)]
+    # 自由提问兜底：库内未命中时保留原文候选（让查询层自己做 ILIKE 模糊）
+    if not out:
+        out = cands[:2]
+    return out[:3]
+
+
+def q_population(q, ents):
+    cur = get_conn().cursor()
+    out, sources = [], []
+    # 全岛总量口径
+    if not ents or any(k in q for k in ("全台", "全岛", "总量", "总计", "共")):
+        cur.execute("SELECT sum(pop) FROM tw_demo_countypop")
+        tot = cur.fetchone()[0]
+        if tot:
+            out.append({"scope": "全台", "population_worldpop": int(tot), "source_year": 2020})
+            sources.append("tw_demo_countypop 合计（WorldPop 2020）")
+    for e in ents:
+        cur.execute("""SELECT g.name, g.fcode, g.population, cb.name, ST_Y(g.geom), ST_X(g.geom)
+            FROM tw.gaz_alias a JOIN tw.gaz_tw g USING (geonameid)
+            LEFT JOIN LATERAL (SELECT name FROM tw.boundary b
+                               WHERE b.level=2 AND ST_Within(g.geom, b.geom) LIMIT 1) cb ON true
+            WHERE a.alt = ANY(%s) AND g.population > 0
+            ORDER BY g.population DESC LIMIT 4""", ([e, s2t(e)],))
+        rows = cur.fetchall()
+        for name, fcode, pop, adm, la, lo in rows:
+            out.append({"place": e, "name": name, "fcode": fcode, "population": pop,
+                        "所在县市": county_cn(adm), "lat": round(la, 3), "lon": round(lo, 3)})
+            sources.append(f"tw.gaz_tw/geonames geonameid 检索（{e}）")
+    # 县市级：查演示人口表（WorldPop 分区）；实体或前缀双匹配（防简繁/后缀差异）
+    for e in ents:
+        cur.execute("SELECT n, pop FROM tw_demo_countypop WHERE n ILIKE %s OR cn ILIKE %s OR cn ILIKE %s OR cn ILIKE %s LIMIT 2",
+                    (f"%{e}%", f"%{e}%", f"%{e[:2]}%", f"%{s2t(e)[:2]}%"))
+        for n, pop in cur.fetchall():
+            out.append({"place": e, "county": n, "population_worldpop": pop})
+            sources.append("tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）")
+    out = out[:6]
+    if not out:
+        for e in ents:
+            cur.execute("SELECT name, pop FROM tw_demo_townpop WHERE name ILIKE %s OR name ILIKE %s LIMIT 3",
+                        (f"%{e}%", f"%{e[:2]}%"))
+            for name, pop in cur.fetchall():
+                out.append({"place": e, "name": name, "township_pop": pop})
+                sources.append(f"WorldPop 2020 乡镇分区统计（{name}）")
+    return out, sources
+
+
+def q_events(q, ents):
+    cur = get_conn().cursor()
+    place_cond, params = "", []
+    # 仅用"库内验证过的地点实体"过滤（events 表本身已是台湾域数据，非地名实体不得进过滤）
+    en_ents = []
+    zh_ents = []
+    for e in ents:
+        cur.execute("""SELECT DISTINCT g.name FROM tw.gaz_alias a JOIN tw.gaz_tw g USING (geonameid)
+            WHERE a.alt = ANY(%s) LIMIT 2""", ([e, s2t(e)],))
+        names = [r[0] for r in cur.fetchall()]
+        if names:
+            zh_ents.append(e)
+            en_ents += [n for n in names if re.search(r"[a-zA-Z]", n)]
+    pats = zh_ents + en_ents
+    if pats:
+        pat = "|".join(pats)
+        place_cond = "AND (geo_name ~* %s OR actor1 ~* %s OR actor2 ~* %s)"
+        params = [pat, pat, pat]
+    cur.execute(f"""SELECT root_name, rootcode, count(*), round(avg(goldstein)::numeric, 2),
+        max(sqldate)::text, min(sqldate)::text
+        FROM tw.events WHERE sqldate >= '2025-06-01' {place_cond}
+        GROUP BY root_name, rootcode ORDER BY 3 DESC LIMIT 8""", params)
+    cats = cur.fetchall()
+    CN_ROOT = {"01": "表态", "02": "呼吁", "03": "合作意向", "04": "磋商", "05": "外交合作", "06": "物质合作",
+               "07": "提供援助", "08": "让步/屈服", "09": "调查", "10": "需求/主张", "11": "不赞成", "12": "抗议",
+               "13": "威胁施压", "14": "制裁", "15": "武力部署", "16": "武装冲突", "17": "强制", "18": "袭击", "19": "战斗", "20": "大规模暴力"}
+    cats = [[c[0], CN_ROOT.get(str(c[1])[:2], "") + "类", c[2], c[3], c[4], c[5]] for c in cats]
+    cur.execute(f"""SELECT sqldate::text, root_name, geo_name, goldstein, mentions
+        FROM tw.events WHERE 1=1 {place_cond}
+        ORDER BY sqldate DESC, mentions DESC NULLS LAST LIMIT 8""", params)
+    recent = cur.fetchall()
+    cur.execute(f"""SELECT to_char(sqldate, 'YYYY-MM') m, count(*) FROM tw.events
+        WHERE sqldate >= '2024-01-01' {place_cond} GROUP BY to_char(sqldate, 'YYYY-MM') ORDER BY m""", params)
+    monthly = cur.fetchall()
+    cur.execute("SELECT min(sqldate)::text, max(sqldate)::text, count(*) FROM tw.events")
+    span = cur.fetchone()
+    # 问题点名的类别做定向计数（不受 top8 截断影响）
+    FOCUS = [("抗议", "12"), ("战斗", "19"), ("袭击", "18"), ("制裁", "14"), ("威胁", "13"), ("磋商", "04"), ("部署", "15")]
+    focus = []
+    for kw, code in FOCUS:
+        if kw in q:
+            cur.execute(f"""SELECT count(*) FROM tw.events WHERE rootcode LIKE %s
+                AND sqldate >= (SELECT max(sqldate) FROM tw.events) - interval '365 days' {place_cond}""",
+                [code + "%"] + params)
+            focus.append(f"{kw}类(CAMEO {code})近一年 {cur.fetchone()[0]} 条")
+    sources = ["tw.events（GDELT 1.0 双周采样，月分区表）"]
+    return {"收录时间范围": f"{span[0]} 至 {span[1]}，共 {span[2]} 条",
+            "指定类别": focus, "categories": cats, "recent": recent, "monthly": monthly[-12:]}, sources
+
+
+def q_facility(q, ents):
+    # 县市简→繁/英对照（地名词典产物，用于县级空间过滤）
+    COUNTY = {"台北": "Taipei", "新北": "New Taipei", "桃园": "Taoyuan", "台中": "Taichung",
+              "台南": "Tainan", "高雄": "Kaohsiung", "基隆": "Keelung|Chilung", "新竹": "Hsinchu",
+              "苗栗": "Miaoli", "彰化": "Changhua", "南投": "Nantou", "云林": "Yunlin",
+              "嘉义": "Chiayi", "屏东": "Pingtung", "宜兰": "Yilan", "花莲": "Hualien",
+              "台东": "Taitung", "澎湖": "Penghu", "金门": "Kinmen|Quemoy", "连江": "Lienchiang"}
+    cur = get_conn().cursor()
+    out, sources = [], []
+    kind = None
+    if "机场" in q or "機場" in q:
+        kind, tbl = "机场", "tw.airports"
+    elif "港口" in q or "碼頭" in q or "码头" in q or "漁港" in q or "渔港" in q:
+        kind, tbl = "港口/码头", "tw.ports"
+    elif "电力" in q or "電廠" in q or "电厂" in q or "变电站" in q or "變電" in q or "電站" in q:
+        kind, tbl = "电力设施", "tw.power"
+    elif "铁路" in q or "鐵路的" in q or "轨" in q:
+        kind, tbl = "铁路", "tw.rail"
+    else:
+        tbl = None
+    # 县市级空间过滤（宜兰的港口 → 县面内计数）：别名英文 → 简繁对照表兜底
+    county_geo = None
+    if ents and tbl:
+        cur.execute("""SELECT DISTINCT g.name FROM tw.gaz_alias a JOIN tw.gaz_tw g USING (geonameid)
+                       WHERE a.alt = ANY(%s) AND g.name ~* '[a-z]' LIMIT 3""", ([ents[0], s2t(ents[0])],))
+        en_list = [r[0] for r in cur.fetchall()]
+        if not en_list:
+            for k, v in COUNTY.items():
+                if k in (ents[0] or "") or k in q:
+                    en_list = [v]
+                    break
+        if en_list:
+            cur.execute("""SELECT ST_AsText(geom) FROM tw.boundary WHERE level=2 AND name ~* %s LIMIT 1""",
+                        ("|".join(en_list),))
+            r = cur.fetchone()
+            if r:
+                county_geo = r[0]
+    if tbl:
+        if county_geo:
+            cur.execute(f"SELECT count(*) FROM {tbl} p WHERE ST_Within(p.geom, ST_GeomFromText(%s,4326))", (county_geo,))
+            sub = cur.fetchone()[0]
+            cur.execute(f"SELECT count(*) FROM {tbl}")
+            total = cur.fetchone()[0]
+            cur.execute(f"""SELECT COALESCE(name,'(未命名)'), ST_Y(ST_PointOnSurface(geom)), ST_X(ST_PointOnSurface(geom)) FROM {tbl} p
+                            WHERE ST_Within(p.geom, ST_GeomFromText(%s,4326)) LIMIT 8""", (county_geo,))
+            rows = cur.fetchall()
+            out = {"统计": f"{ents[0]} 境内{kind} {sub} 处（全台 {kind} 共 {total} 条）",
+                   "样例": [{"name": n, "lat": round(la, 3), "lon": round(lo, 3)} for n, la, lo in rows]}
+            sources.append(f"{tbl} × tw.boundary 空间过滤（{ents[0]}）")
+            return out, sources
+        cur.execute(f"SELECT count(*) FROM {tbl}")
+        total = cur.fetchone()[0]
+        if "最大" in q and tbl == "tw.power":
+            cur.execute("""SELECT COALESCE(name,'(未命名)'), ST_Y(ST_PointOnSurface(geom)), ST_X(ST_PointOnSurface(geom)) FROM tw.power
+                           WHERE kind='plant' ORDER BY osm_id LIMIT 6""")
+            rows = cur.fetchall()
+            out = {"统计": f"电厂 {total} 处；OSM 未标注装机容量（已知缺口，见 power_capacity 记档），无法按容量排序，按名称列出部分电厂",
+                   "样例": [{"name": n, "lat": round(la, 3), "lon": round(lo, 3)} for n, la, lo in rows]}
+            sources.append("tw.power / tw.power_capacity（容量字段 OSM 缺失，诚实记档）")
+            return out, sources
+        cond, params = "", []
+        if ents:
+            cond = "WHERE name ILIKE %s"
+            params = [f"%{ents[0]}%"]
+            cur.execute(f"SELECT COALESCE(name,'(未命名)'), ST_Y(ST_PointOnSurface(geom)), ST_X(ST_PointOnSurface(geom)) FROM {tbl} {cond} LIMIT 12", params)
+            rows = cur.fetchall()
+            if not rows:  # 实体过滤无命中 → 回退全量样例
+                cond, params = "", []
+                cur.execute(f"SELECT COALESCE(name,'(未命名)'), ST_Y(ST_PointOnSurface(geom)), ST_X(ST_PointOnSurface(geom)) FROM {tbl} LIMIT 12")
+                rows = cur.fetchall()
+        else:
+            cur.execute(f"SELECT COALESCE(name,'(未命名)'), ST_Y(ST_PointOnSurface(geom)), ST_X(ST_PointOnSurface(geom)) FROM {tbl} LIMIT 12")
+            rows = cur.fetchall()
+        out = [{"name": n, "lat": round(la, 3), "lon": round(lo, 3)} for n, la, lo in rows][:8]
+        out = {"统计": f"{kind} 总数 {total} 条", "样例": out}
+        sources.append(f"{tbl}（OSM Overpass，共 {total} 条）")
+        return out, sources
+    if "乡镇" in q or "行政" in q:
+        cur.execute("SELECT count(*) FROM tw.admin_osm WHERE level=8")
+        n8 = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM tw.boundary WHERE level=2")
+        n2 = cur.fetchone()[0]
+        sources.append("tw.admin_osm（OSM admin_level=8）/ tw.boundary（县市面）")
+        return {"统计": f"乡镇级面 {n8} 个（覆盖 204/368），县市级面 {n2} 个"}, sources
+    # 未指明设施类型 → 全类计数
+    cur.execute("""SELECT '机场' k, count(*) FROM tw.airports UNION ALL
+                   SELECT '港口/码头', count(*) FROM tw.ports UNION ALL
+                   SELECT '电力设施', count(*) FROM tw.power UNION ALL
+                   SELECT '铁路段', count(*) FROM tw.rail""")
+    counts = {k: n for k, n in cur.fetchall()}
+    sources.append("tw.airports / tw.ports / tw.power / tw.rail（OSM Overpass）")
+    return {"统计": (f"机场 {counts.get('机场', 0)} · 港口/码头 {counts.get('港口/码头', 0)} · "
+                    f"电力设施 {counts.get('电力设施', 0)} · 铁路 {counts.get('铁路段', 0)} 段")}, sources
+
+
+def q_place(q, ents):
+    cur = get_conn().cursor()
+    out, sources = [], []
+    for e in ents[:2]:
+        cur.execute("""SELECT g.geonameid, g.name, g.fclass, g.fcode, cb.name, tb.name, g.population, g.elev_m,
+            ST_Y(g.geom), ST_X(g.geom), a.alt
+            FROM tw.gaz_alias a JOIN tw.gaz_tw g USING (geonameid)
+            LEFT JOIN LATERAL (SELECT name FROM tw.boundary b
+                               WHERE b.level=2 AND ST_Within(g.geom, b.geom) LIMIT 1) cb ON true
+            LEFT JOIN LATERAL (SELECT name FROM tw.admin_osm o
+                               WHERE o.level=8 AND ST_Within(g.geom, o.geom) LIMIT 1) tb ON true
+            WHERE a.alt = ANY(%s) OR g.name ILIKE %s
+            ORDER BY g.population DESC NULLS LAST LIMIT 4""", ([e, s2t(e)], f"%{e}%"))
+        seen = set()
+        for r in cur.fetchall():
+            if r[0] in seen:
+                continue
+            seen.add(r[0])
+            out.append({"query": e, "name": r[1], "fcode": r[3], "所在县市": county_cn(r[4]),
+                        "所在乡镇": r[5], "population": r[6], "elevation": r[7],
+                        "lat": round(r[8], 3), "lon": round(r[9], 3), "zh": r[10]})
+        sources.append(f"tw.gaz_tw（GeoNames 45,572 条，中文别名 31,564）")
+    return out, sources
+
+
+def q_attention(q, ents):
+    cur = get_conn().cursor()
+    cur.execute("SELECT d::text, volume FROM tw.ts_attention ORDER BY d DESC LIMIT 2")
+    latest = cur.fetchall()
+    cur.execute("SELECT round(avg(volume)::numeric, 3), max(volume), min(volume) FROM tw.ts_attention")
+    stat = cur.fetchone()
+    cur.execute("SELECT d::text, volume FROM tw.ts_attention ORDER BY volume DESC LIMIT 1")
+    peak = cur.fetchone()
+    cur.execute("""SELECT d::text, volume FROM tw.ts_attention
+                   WHERE d >= (SELECT max(d) FROM tw.ts_attention) - interval '30 days' ORDER BY d""")
+    recent30 = cur.fetchall()
+    cur.execute("""SELECT to_char(date_trunc('month', d), 'YYYY-MM') m, round(avg(volume)::numeric, 3)
+                   FROM tw.ts_attention GROUP BY 1 ORDER BY 1""")
+    monthly = cur.fetchall()
+    cur.execute("SELECT d::text, volume FROM tw.ts_attention ORDER BY d DESC OFFSET 364 LIMIT 1")
+    year_ago = cur.fetchone()
+    sources = ["tw.ts_attention（GDELT DOC timeline，710 天每日）"]
+    return {"latest": latest, "avg_max_min": stat, "peak": peak, "recent_30d": recent30[-10:],
+            "monthly_avg": monthly[-13:], "year_ago": year_ago}, sources
+
+
+class Ask(BaseModel):
+    question: str
+
+
+@app.post("/api/ask")
+def ask(body: Ask):
+    t0 = time.time()
+    q = body.question.strip()
+    ensure_pg()
+    intent = classify(q)
+    ents = extract_entities(q)
+    try:
+        if intent == "population":
+            data, sources = q_population(q, ents)
+        elif intent == "event":
+            data, sources = q_events(q, ents)
+        elif intent == "facility":
+            data, sources = q_facility(q, ents)
+        elif intent == "attention":
+            data, sources = q_attention(q, ents)
+        else:
+            data, sources = q_place(q, ents)
+    except Exception as e:
+        data, sources = [], [f"查询失败: {str(e)[:80]}"]
+
+    ctx = json.dumps(data, ensure_ascii=False, default=str)[:3500]
+    prompt = f"""你是"地志智询"——台湾人文地理数据助手。只根据下面提供的查询结果回答问题，不要编造数据。
+如果查询结果为空或无法回答，明确说明。回答末尾用【来源：…】标注数据表。
+
+查询结果（JSON）：
+{ctx}
+
+用户问题：{q}
+
+要求：用中文简洁回答（不超过150字），数字必须来自查询结果；回答中禁止出现JSON原文、字段名或花括号，来源只写数据表名（如【来源：tw_demo_countypop】）；若查询结果含说明性文字（如数据缺口记档、口径说明），请如实转述其中的数字与结论，不要说"没有数据"。"""
+    try:
+        answer = ollama_gen("qwen3:8b", "/no_think\n" + prompt)
+        answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.S).strip()
+        if not answer:
+            answer = "（模型未生成正文——请重试或减小问题复杂度）"
+    except Exception as e:
+        answer = f"生成失败: {str(e)[:100]}"
+    srcs = list(dict.fromkeys(sources))[:4]
+    srcs.append("qwen3:8b 本地生成（Ollama）")
+    return {"intent": intent, "entities": ents, "answer": answer,
+            "sources": srcs, "elapsed": round(time.time() - t0, 1)}
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    ensure_pg()
+    # 预建乡镇人口小表（demo 前端用）
+    c = get_conn()
+    c.autocommit = True
+    cur = c.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS tw_demo_townpop AS
+        SELECT o.name, round(sum(COALESCE(g.population,0))::numeric, 0) AS pop
+        FROM tw.admin_osm o LEFT JOIN tw.gaz_tw g ON ST_Contains(o.geom, g.geom)
+        WHERE o.level = 8 GROUP BY o.name""")
+    cur.execute("CREATE INDEX IF NOT EXISTS tdp_name_ix ON tw_demo_townpop (name)")
+    print("town pop table ready")
+    def _warm():  # 启动即加载模型常驻，首问不再吃 7s 加载
+        try:
+            ollama_gen("qwen3:8b", "回复：ok", timeout=120)
+            print("model warm (qwen3:8b keep_alive=30m)")
+        except Exception as e:
+            print("warm skip:", str(e)[:80])
+    threading.Thread(target=_warm, daemon=True).start()
+    uvicorn.run(app, host="127.0.0.1", port=8600, log_level="warning")

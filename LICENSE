@@ -1,0 +1,18 @@
+Plugin & original code: Copyright (c) 2026 Baodao WenYu Team (competition team)
+
+This program (the "宝岛文舆" QGIS plugin and its pipeline/eval scripts) is free software:
+you can redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation, either version 2 of the License,
+or (at your option) any later version, as required for derivatives of QGIS (GPL-2.0).
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details:
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+
+Data assets carry their own licenses and are NOT covered by the above grant:
+- OpenStreetMap extracts/derived tables: ODbL (attribution © OpenStreetMap contributors)
+- GeoNames: CC-BY 3.0 | WorldPop: CC-BY 4.0 | SRTM/NGA charts: public domain
+- GDELT: non-commercial research terms | Models (qwen3, bge-m3): Apache-2.0/MIT, weights
+  fetched locally, never redistributed in this package.
+See docs/开源及第三方资源使用清单.md for the per-source obligation matrix.

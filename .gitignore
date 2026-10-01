@@ -1,0 +1,25 @@
+# 内部资料（含敏感字样表述）——绝不进仓库/参赛包
+docs/_internal/
+
+# 大文件不入库，用网盘/构建脚本分发（见 data/DATA_SOURCES.md）
+data/raw/
+data/derived/
+data/db/*.dump
+basemap/
+demo_contest/
+
+# 运行产物
+__pycache__/
+*.pyc
+*.log
+eval/outputs/
+scripts/*.msi
+
+# 敏感
+*.key
+*.env
+config_local.py
+
+# 内部/含非民用要素导出脚本（绝不入库）
+pipeline/_internal/
+docs/_internal/
