@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """make_tiles_terrain.py — 用本地 GDAL 把自有 DEM/晕渲切成 XYZ 瓦片（z0-12）。
-运行：H:\\tools\\conda_env_geo\\python.exe H:\\taiwan\\make_tiles_terrain.py
-产物：H:\\taiwan\\basemap\\terrain\\{z}\\{x}\\{y}.png（彩色高程+山体阴影融合）
-许可：源数据 NASA SRTM 公共领域，产物完全自产可分发。"""
+运行：python pipeline\\make_tiles_terrain.py   （需 GDAL；产物许可：源 NASA SRTM 公共领域，完全自产可分发）
+产物：basemap\\terrain\\{z}\\{x}\\{y}.png（彩色高程 + 山体阴影融合）"""
 import os, sys
 from osgeo import gdal
 gdal.UseExceptions()
 
-ROOT = r"D:\宝岛文舆"\nRAW = os.path.join(ROOT, "data", "raw")
+ROOT = r"D:\宝岛文舆"
+RAW = os.path.join(ROOT, "data", "raw")
 OUT = os.path.join(ROOT, "basemap")
 DEM = os.path.join(RAW, "dem_patched.tif")
 HS = os.path.join(RAW, "hillshade_md.tif")
