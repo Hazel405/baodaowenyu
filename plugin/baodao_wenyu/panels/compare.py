@@ -8,7 +8,21 @@ from qgis.PyQt.QtCore import Qt
 from qgis.core import QgsProject, QgsRasterLayer
 
 TILE_BASE = "http://127.0.0.1:8090"
-BASMAP_ROOT = r"D:\宝岛文舆\basemap"
+def _find_basemap():
+    """自动定位 basemap 根：BAODAO_HOME → 常见安装位置扫描 → 原开发机路径兜底。"""
+    import glob as _g
+    home = os.environ.get("BAODAO_HOME")
+    cands = []
+    if home:
+        cands.append(os.path.join(home, "basemap"))
+    cands += _g.glob(os.path.join(r"D:\宝岛文娱", "*", "basemap"))
+    cands.append(r"D:\宝岛文舆\basemap")
+    for c in cands:
+        if os.path.isdir(c):
+            return c
+    return cands[-1]
+
+BASMAP_ROOT = _find_basemap()
 # 时点登记（id, 标题, 年份）——与 data/registry.csv 同步
 PERIODS = [("jpc200k_1904", "日治实测地形图 二十万分一", 1904),
            ("jpc50k_1921", "台湾堡图（街庄名）", 1921),

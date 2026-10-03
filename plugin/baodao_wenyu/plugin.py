@@ -52,16 +52,41 @@ class BaodaoWenyuPlugin:
             self.iface.removePluginMenu("宝岛文舆", a)
 
     # ★ 一键打开预配好的演示工程（分级设色/标注/事件/路网全配好，打开即满屏）
+    @staticmethod
+    def _find_project_file(name):
+        """自动定位项目根下的文件：BAODAO_HOME 环境变量 → 常见安装位置扫描。"""
+        import glob as _g
+        home = os.environ.get("BAODAO_HOME")
+        cands = []
+        if home:
+            cands.append(os.path.join(home, name))
+        cands += _g.glob(os.path.join(r"D:\宝岛文娱", "*", name))
+        cands.append(os.path.join(r"D:\宝岛文舆", name))
+        for c in cands:
+            if os.path.exists(c):
+                return c
+        return None
+
     def open_demo(self):
-        qgz = r"D:\宝岛文舆\demo_project.qgz"
-        if not os.path.exists(qgz):
-            self.iface.messageBar().pushWarning("宝岛文舆", "演示工程未生成：请先运行 scripts\\run_build_project.bat")
-            return
-        QgsProject.instance().clear()
-        self.iface.openProject(qgz)
-        from qgis.core import QgsRectangle
-        self.iface.mapCanvas().setExtent(QgsRectangle(119.3, 21.9, 122.5, 25.3))
-        self.iface.mapCanvas().refresh()
+        try:
+            qgz = self._find_project_file("demo_project.qgz")
+            if not qgz:
+                self.iface.messageBar().pushWarning("宝岛文舆", "演示工程未生成：请先运行 scripts\\run_build_project.bat")
+                return
+            QgsProject.instance().clear()
+            QgsProject.instance().read(qgz)
+            from qgis.core import QgsRectangle
+            self.iface.mapCanvas().setExtent(QgsRectangle(119.3, 21.9, 122.5, 25.3))
+            self.iface.mapCanvas().refresh()
+        except Exception:
+            import traceback
+            tb = traceback.format_exc()
+            try:
+                with open(r"C:\Temp\baodao_err.log", "w", encoding="utf-8") as f:
+                    f.write(tb)
+            except Exception:
+                pass
+            self.iface.messageBar().pushCritical("宝岛文舆", "打开演示工程出错，详见 C:\\Temp\\baodao_err.log")
 
     # 览：自产 XYZ 瓦片底图（street/terrain/hillshade），零第三方瓦片再分发
     def add_basemaps(self):

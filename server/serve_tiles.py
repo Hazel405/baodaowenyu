@@ -12,8 +12,10 @@ import http.server
 import os
 import urllib.parse
 
-ROOT = r"D:\宝岛文舆\basemap"
-WEB = r"D:\宝岛文舆\web"
+_HERE = os.path.dirname(os.path.abspath(__file__))   # .../server
+_PKG = os.path.dirname(_HERE)                        # 项目根（换机自动适配）
+ROOT = os.path.join(_PKG, "basemap")
+WEB = os.path.join(_PKG, "web")
 PORT = 8090
 TILE_PREFIX = ("street", "terrain", "hillshade")
 

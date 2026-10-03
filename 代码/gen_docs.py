@@ -10,9 +10,24 @@ from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+import os
+
+# 仓库根目录（代码/ 的上一级）。图片按相对路径定位，
+# 避免硬编码原作者的 D:\宝岛文舆\ 绝对路径导致换机/接手包中图片全部丢失。
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def FIG(name):
+    return os.path.join(ROOT_DIR, "docs", "figures", name)
 
 WORK_NAME = "宝岛文舆·开源GIS地志智询系统"
-DATE_LINE = "日期：2026年10月　日"
+DATE_LINE = "日期：2026 年 10 月 　 日"
+# 封面字段：严格对齐附件2《AIC·AI+开源技术报告参考大纲》封面要求
+# （团队名称 / 团队编号 / 作品名称 / 参赛方向 / 日期）
+TEAM_NAME = "×××（匿名，勿填校名）"
+TEAM_NO = "AIC-2026-××××"
+DIRECTION = "方向三　开源项目改进与生态贡献"
 
 
 def set_run(run, size=12, bold=False, font="宋体"):
@@ -31,12 +46,21 @@ def page_setup(doc):
         s.header_distance = s.footer_distance = Cm(1.5)
 
 
-def para(doc, text, size=12, bold=False, align=None, space_after=0, indent=True, font="宋体"):
+def para(doc, text, size=12, bold=False, align=None, space_after=0, indent=True, font="宋体", style=None):
     p = doc.add_paragraph()
+    if style is not None:
+        # 使用 Word 内置标题样式：TOC 域靠 outline level 抓取条目，不设样式则"未找到目录项"。
+        # 但内置样式自带段前间距（H1 24pt / H2H3 10pt）与行距，会把正文撑到 16 页超出 15 页上限，
+        # 故在段落级显式覆盖为 0，保持与原有"紧凑版式"完全一致的视觉效果。
+        try:
+            p.style = doc.styles[style]
+        except KeyError:
+            pass
     r = p.add_run(text)
     set_run(r, size, bold, font)
     pf = p.paragraph_format
     pf.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    pf.space_before = Pt(0)
     pf.space_after = Pt(space_after)
     if indent and align is None:
         pf.first_line_indent = Pt(size * 2)
@@ -46,15 +70,15 @@ def para(doc, text, size=12, bold=False, align=None, space_after=0, indent=True,
 
 
 def h1(doc, text):
-    return para(doc, text, size=16, bold=True, align=None, space_after=6, indent=False)
+    return para(doc, text, size=16, bold=True, align=None, space_after=6, indent=False, style="Heading 1")
 
 
 def h2(doc, text):
-    return para(doc, text, size=14, bold=True, space_after=4, indent=False)
+    return para(doc, text, size=14, bold=True, space_after=4, indent=False, style="Heading 2")
 
 
 def h3(doc, text):
-    return para(doc, text, size=12, bold=True, space_after=2, indent=False)
+    return para(doc, text, size=12, bold=True, space_after=2, indent=False, style="Heading 3")
 
 
 def fig(doc, path, width_cm=11.5, caption=None):
@@ -89,6 +113,27 @@ def table(doc, headers, rows, widths=None, size=10.5):
     return t
 
 
+def add_toc_field(doc, levels="1-3"):
+    """插入真正的 Word 目录域（TOC field）。
+
+    替代原先"手写文本 + 硬编码页码"的做法：硬编码页码在插入图片导致分页变化后
+    必然错位（历史坑：第 8~10 页 6 张大图把第五章从第 7 页推到第 8 页）。
+    插入域后由 Word/WPS 或 LibreOffice 转 PDF 时自动计算真实页码。
+    """
+    p = doc.add_paragraph()
+    r = p.add_run()
+    fld_begin = OxmlElement('w:fldChar'); fld_begin.set(qn('w:fldCharType'), 'begin')
+    instr = OxmlElement('w:instrText'); instr.set(qn('xml:space'), 'preserve')
+    instr.text = f' TOC \\o "{levels}" \\h \\z \\u '
+    fld_sep = OxmlElement('w:fldChar'); fld_sep.set(qn('w:fldCharType'), 'separate')
+    placeholder = OxmlElement('w:t')
+    placeholder.text = "（目录域：打开文档后按 F9 或右键“更新域”生成页码；转 PDF 时自动更新）"
+    fld_end = OxmlElement('w:fldChar'); fld_end.set(qn('w:fldCharType'), 'end')
+    for el in (fld_begin, instr, fld_sep, placeholder, fld_end):
+        r._element.append(el)
+    return p
+
+
 def cover(doc, subtitle):
     for _ in range(3):
         doc.add_paragraph()
@@ -97,7 +142,9 @@ def cover(doc, subtitle):
         para(doc, txt, size=sz, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=8, indent=False)
     for _ in range(4):
         doc.add_paragraph()
-    for txt in ["团队名称：×××（匿名，勿填校名）", "参赛编号：AIC-2026-××××", f"作品名称：{WORK_NAME}", DATE_LINE]:
+    # 字段名严格对齐附件2 封面：团队名称 / 团队编号 / 作品名称 / 参赛方向 / 日期
+    for txt in [f"团队名称：{TEAM_NAME}", f"团队编号：{TEAM_NO}",
+                f"作品名称：{WORK_NAME}", f"参赛方向：{DIRECTION}", DATE_LINE]:
         para(doc, txt, size=14, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=10, indent=False)
     doc.add_page_break()
 
@@ -108,13 +155,9 @@ def build_report(path):
     page_setup(doc)
     cover(doc, "赛题：基于QGIS二次开发的中国台湾省\n人文地理地志智询系统")
 
-    # 目录（页码按渲染实测填写；若用 Word 重排有偏移，改这一处数字即可）
+    # 目录：真 TOC 域（自动取页码），不再硬编码
     para(doc, "目  录", size=22, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False)
-    toc = [("作品简介", 3), ("一、作品概述", 3), ("二、需求分析与总体方案", 4), ("三、AI 技术与开源及第三方资源选择", 5),
-           ("四、设计与实现过程", 6), ("五、成果展示与效果验证", 7), ("六、创新性与开放价值", 12),
-           ("七、合规、安全与风险说明", 13), ("八、总结与展望", 13), ("九、附录", 14)]
-    for t, pg in toc:
-        para(doc, f"{t}\t{pg}", size=12, indent=False)
+    add_toc_field(doc, "1-3")
     doc.add_page_break()
 
     # 作品简介（≤300字）
@@ -154,7 +197,7 @@ def build_report(path):
     para(doc, "对地理相关专业学生与教师共 12 人次的半结构化访谈及竞品试用（百度地图开放平台、天地图、MapGeo 类网站、直接问大模型）归纳出四类需求，按优先级排序："
               "P1 答案要“敢引用”——有出处、有口径说明；P2 要能上图——查询结果直接可视化；P3 覆盖人文+地形双主题——地名、人口、交通、水系、坡度流域等；"
               "P4 离线/低成本可用——不依赖付费服务。通用大模型满足 P2/P3 差、P1 不满足；在线地图平台无问答与分析能力；本作品四项全覆盖。")
-    h3(doc, "3. 为什么不直接使用百度地图（与同类产品差异）")
+    h3(doc, "2. 为什么不直接使用百度地图（与同类产品差异）")
     para(doc, "商业在线地图提供的是“导航服务”，本作品交付的是“可验证、可分析、可跨时的区域知识平台”，差异是结构性的："
               "① 可溯源——每个数字回链到 GeoNames/OSM/GDELT/WorldPop 原始记录与采集时间，商业地图数据为封闭黑箱且许可禁止抓取再利用；"
               "② 可分析——本系统底图与要素统一于 WGS84/4326 坐标系，可直接叠加 70m DEM 派生的坡度、流域、通行难度做灾害参考；"
@@ -258,12 +301,12 @@ def build_report(path):
               "⑤ 30 题问答基准、300 条跨县市同名消歧基准与裸模型消融评测全部完成，题目集与结果 JSON 随仓库发布；"
               "⑥ demo_project.qgz 演示工程（脚本可重建），用于评审与录屏的“打开即见”。"
               "界面证据见图 1–图 6；演示视频按“提问→答案→地图联动→历史卷帘→专题图”主线录制 4 分钟。")
-    fig(doc, r"D:\宝岛文舆\docs\figures\fig_lan_island.png", caption="图 1  览·全岛：自产地形瓦片底图 + 县市界 + 主要城市点（QGIS 3.44 渲染）")
-    fig(doc, r"D:\宝岛文舆\docs\figures\fig_lan_taipei.png", caption="图 2  览·台北都会：自渲街道瓦片（z12）+ 分级路网叠加，无级缩放与商业在线地图同构")
-    fig(doc, r"D:\宝岛文舆\docs\figures\fig_xun_qa.png", width_cm=9.5, caption="图 3  询·地志智询：真实问答（答案数字来自检索、来源标注表名）")
-    fig(doc, r"D:\宝岛文舆\docs\figures\fig_xi_analysis.png", width_cm=11, caption="图 4  析·分区统计：南投县 DEM 派生指标（坡度/通行难度/最高点）")
-    fig(doc, r"D:\宝岛文舆\docs\figures\fig_jiao_overlay.png", caption="图 5  较·同域双底图叠置（地形×街道半透明），历史时点瓦片入金字塔后同机制卷帘对比")
-    fig(doc, r"D:\宝岛文舆\docs\figures\fig_demo_preview.png", caption="图 6  集成演示工程 demo_project.qgz：自产晕渲底图 + 22 县市人口分级设色 + 高快速路网 + 中文聚落注记 + 2026 事件点（插件“★ 打开演示工程”一键载入）")
+    fig(doc, FIG("fig_lan_island.png"), caption="图 1  览·全岛：自产地形瓦片底图 + 县市界 + 主要城市点（QGIS 3.44 渲染）")
+    fig(doc, FIG("fig_lan_taipei.png"), caption="图 2  览·台北都会：自渲街道瓦片（z12）+ 分级路网叠加，无级缩放与商业在线地图同构")
+    fig(doc, FIG("fig_xun_qa.png"), width_cm=9.5, caption="图 3  询·地志智询：真实问答（答案数字来自检索、来源标注表名）")
+    fig(doc, FIG("fig_xi_analysis.png"), width_cm=11, caption="图 4  析·分区统计：南投县 DEM 派生指标（坡度/通行难度/最高点）")
+    fig(doc, FIG("fig_jiao_overlay.png"), caption="图 5  较·同域双底图叠置（地形×街道半透明），历史时点瓦片入金字塔后同机制卷帘对比")
+    fig(doc, FIG("fig_demo_preview.png"), caption="图 6  集成演示工程 demo_project.qgz：自产晕渲底图 + 22 县市人口分级设色 + 高快速路网 + 中文聚落注记 + 2026 事件点（插件“★ 打开演示工程”一键载入）")
     h2(doc, "（二）验证方法")
     para(doc, "① 检索与问答基准：构造 30 题测试集（地名/人口/事件/设施/关注度各 6 题，含 3 道消歧题），评准确率、耗时与幻觉率；"
               "② 同名消歧基准：另建 300 题消歧集——由库内 SQL 空间连接自动生成 100 组“同名跨 ≥2 县市”实体（聚落/山/水体），"
@@ -368,7 +411,16 @@ def build_report(path):
                              "《地图管理条例》(国务院令第664号)",
                              "日治时期台湾地形图(1898–1904 实测series，公共领域扫描件)",
                              "中研院台百年历史地图叠合服务", "Harvard Map Collection 公共领域扫描馆藏", "tilemaker 与 MBTiles 规范"], 1):
-        para(doc, f"[{i}] {ref}.", size=10, indent=False)
+        para(doc, f"[{i}] {ref}.", size=10.5, indent=False)
+    # 附件2 附录第 5 条：受限提交说明或开放计划（原稿缺失，2026-10-02 补齐）
+    h2(doc, "（五）受限提交说明与开放计划")
+    para(doc, "受限提交范围：① 模型权重——qwen3:8b 与 bge-m3 权重依其适用许可不在本作品中再分发，"
+              "作品仅提供调用配置与模型标识，评审方可自行按公开渠道获取；② 原始第三方抽取文件——"
+              "OSM/GDELT 原始抽取文件受 ODbL 与非商业研究条款约束，不整体再分发，仅提供来源标识与可复跑的重建脚本；"
+              "③ 数据访问凭据与评审无关的账号口令一律不提交。")
+    para(doc, "开放计划：本作品全部自研部分（QGIS 插件源码 GPL-2.0-or-later、数据管线与 DEM 派生脚本 MIT、"
+              "评测集与评测脚本、数据字典与部署教程、双模式网页查看端）拟于评审结束后开放至 Gitee 主仓库与 GitHub 镜像，"
+              "并推进插件在 plugins.qgis.org 官方仓库上架；后续按季度更新数据与版本迭代，提供 Issue 模板与更新日志。")
 
     doc.save(path)
     print("saved", path)
