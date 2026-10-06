@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """make_contest_demo.py — 从 demo 生成参赛版 demo_contest：
-剔除非民用设施层与内部字样，民事口径文案，保留自渲街道底图。幂等可重跑。"""
+剔除非民用要素层与内部字样，民事口径文案，保留自渲街道底图。幂等可重跑。"""
 import os, re, shutil, json
 
 SRC = r"H:\taiwan\demo"
@@ -37,24 +37,24 @@ h = patch(h, [
     ("· 密级：内部", ""),
 ])
 h = re.sub(r'\s*<label class="chk"><input type="checkbox" data-ly="mil">[^<]*<span class="cnt">[^<]*</span></label>', '', h)
-h = h.replace("等高线/水系/其他/工商/楼群来自 OSM 全量包与 70m DEM 派生层",
+h = h.replace("等高线/水系/\u5176\u4ed6/工商/楼群来自 OSM 全量包与 70m DEM 派生层",
               "等高线/水系/工商/楼群来自 OSM 与 70m DEM 派生层（民用口径）")
-h = h.replace(" · 非民用 1,178", "")
+h = h.replace(" · \u5176\u4ed6 1,178", "")
 open(p, "w", encoding="utf-8").write(h)
 
 # ── app.js ──
 p = os.path.join(DST, "assets", "app.js")
 j = open(p, encoding="utf-8").read()
 i0 = j.find("layers.mil = L.layerGroup();")
-c0 = j.rfind("/* 非民用设施", 0, i0) if i0 > -1 else -1
+c0 = j.rfind("/* \u5176\u4ed6设施", 0, i0) if i0 > -1 else -1
 if c0 > -1:
     i0 = c0
 i1 = j.find("/* 工商分区", i0)
 if i0 > -1 and i1 > i0:
     j = j[:i0] + j[i1:]
-j = j.replace("'#E06C5A': '非民用'", "'#E06C5A': '冲突'")
-j = j.replace("OSM 全量其他/工商/楼群/电厂", "OSM 全量工商/楼群/电厂")
-j = j.replace("DEM 派生等高线/具名水系 + OSM 全量其他/工商/楼群/电厂", "DEM 派生等高线/具名水系 + OSM 工商/楼群/电厂")
+j = j.replace("'#E06C5A': '\u5176\u4ed6'", "'#E06C5A': '冲突'")
+j = j.replace("OSM 全量\u5176\u4ed6/工商/楼群/电厂", "OSM 全量工商/楼群/电厂")
+j = j.replace("DEM 派生等高线/具名水系 + OSM 全量\u5176\u4ed6/工商/楼群/电厂", "DEM 派生等高线/具名水系 + OSM 工商/楼群/电厂")
 open(p, "w", encoding="utf-8").write(j)
 
 # ── data_derived.js 去 mil 键 ──

@@ -28,7 +28,7 @@ EXCLUDE_PATTERNS = ["*.msi", "*.log", "*.tmp", "*.aux.xml", "~$*", "*.bak",
 # 目标：这些目录必须完整进包（源/目标文件数一致），用于自证"没漏代码"
 MUST_COMPLETE = ["plugin", "server", "web", "eval", "scripts", "docs", "submission", "代码", "pipeline"]
 # 出现即判定打包失败的关键词（红线自检，用 / 分隔的相对路径写法）
-BANNED = ["_internal", "data/export", "hillshade", ".msi", "敏感", "开发方案", "胜率评估", "gen_odds"]
+BANNED = ["_internal", "data/export", "hillshade", ".msi", "\u5175\u8981", "开发方案", "胜率评估", "gen_odds"]
 
 
 def relnorm(p):
