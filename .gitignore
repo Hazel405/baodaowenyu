@@ -1,9 +1,3 @@
-# 内部资料与内部文档——不随开源仓库/参赛包分发
-docs/_internal/
-代码/gen_odds.py
-开发方案_*.md
-获奖胜率评估_*.docx
-
 # 大文件不入库，用网盘/构建脚本分发（见 data/DATA_SOURCES.md）
 data/raw/
 data/derived/
@@ -21,15 +15,18 @@ scripts/*.msi
 scripts/probe*.py
 scripts/probe*.bat
 docs/_pagecheck/
-代码/_tmp_*.docx
+tools/_tmp_*.docx
 
-# 敏感
+# 本地配置与凭据（绝不入库）
 *.key
 *.env
 config_local.py
 
-# 非民用要素相关脚本与导出（绝不入库）
+# 内部目录（本地保留，不随仓库分发）
+docs/_internal/
 pipeline/_internal/
 
-# 接手包（pipeline/make_handoff.py 生成的自包含快照，体积大且是仓库自身的副本）
+# 提交材料与打包产物（本地保留，不随仓库分发）
+submission/
 提交/
+打包清单.txt

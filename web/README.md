@@ -13,6 +13,10 @@ QGIS 插件是作品主体；本目录是**同一套数据与服务的轻量查�
 页面右上角徽标显示当前模式；两种模式下底图都来自本项目自渲瓦片（实时可勾选 z0–13 全量金字塔，
 离线用 `pipeline/build_web_tiles.py` 随包的低层级瓦片）。
 
+> 说明：仓库内 `web\tiles\` 只保留低层级**样例子集**，便于开源分发的体积可控；
+> 完整 z0–13 金字塔（2.3 万余张，约 900 MB）由 `pipeline/render_tiles.py` +
+> `pipeline/build_web_tiles.py` 从 PostGIS 重建，或直接以 `basemap\` 全量目录提供服务。
+
 ## 运行
 
 ```bat

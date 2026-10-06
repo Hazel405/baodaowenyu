@@ -4,8 +4,8 @@
 用法：python pipeline\\make_handoff.py            （默认输出到 提交\\宝岛文舆-接手包-<日期>\\）
 产物：一份完整可跑的代码 + 数据库转储 + 自产瓦片 + .git 历史 + 部署说明，并打印打包清单与校验结果。
 
-刻意排除（既省体积也是红线）：
-  内部文档  docs/_internal、data/export、开发方案_*.md、获奖胜率评估_*.docx、代码/gen_odds.py
+刻意排除（既省体积也是分发口径）：
+  内部目录  docs/_internal、pipeline/_internal、data/export
   可重建大件  data/raw(≈700MB)、data/derived(≈280MB)、basemap/hillshade 与 *.tif 中间产品、
               scripts/*.msi(≈580MB 安装包)、demo_contest(旧演示端，已被 web/ 取代)
   运行垃圾  __pycache__、*.log、*.tmp、*.aux.xml、~$* 锁文件、docs/_pagecheck 排版自检产物
@@ -17,18 +17,23 @@ import subprocess
 import sys
 import time
 
-ROOT = r"D:\宝岛文舆"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 仓库根（本文件在 pipeline/ 下）
 OUT_ROOT = os.path.join(ROOT, "提交")
 
 EXCLUDE_DIRS_FLAT = {"__pycache__", ".idea", ".vscode", "提交", "demo_contest", "_pagecheck"}
 EXCLUDE_PATHS = ["docs/_internal", "pipeline/_internal", "data/raw", "data/derived", "data/export",
                  "basemap/hillshade"]
-EXCLUDE_PATTERNS = ["*.msi", "*.log", "*.tmp", "*.aux.xml", "~$*", "*.bak",
-                    "开发方案_*.md", "获奖胜率评估_*.docx", "gen_odds.py", "*_v2.docx"]
+EXCLUDE_PATTERNS = ["*.msi", "*.log", "*.tmp", "*.aux.xml", "~$*", "*.bak", "*_v2.docx"]
 # 目标：这些目录必须完整进包（源/目标文件数一致），用于自证"没漏代码"
-MUST_COMPLETE = ["plugin", "server", "web", "eval", "scripts", "docs", "submission", "代码", "pipeline"]
-# 出现即判定打包失败的关键词（红线自检，用 / 分隔的相对路径写法）
-BANNED = ["_internal", "data/export", "hillshade", ".msi", "\u5175\u8981", "开发方案", "胜率评估", "gen_odds"]
+MUST_COMPLETE = ["plugin", "server", "web", "eval", "scripts", "docs", "submission", "tools", "pipeline"]
+# 出现即判定打包失败的关键词（自检，用 / 分隔的相对路径写法）。
+# 额外的红线词表从本地文件读入——该文件不入库，避免词表本身出现在公开仓库：
+#   pipeline\_internal\redline_words.txt   每行一个关键词，# 开头为注释
+BANNED = ["_internal", "data/export", "hillshade", ".msi"]
+_redline = os.path.join(ROOT, "pipeline", "_internal", "redline_words.txt")
+if os.path.exists(_redline):
+    with open(_redline, encoding="utf-8") as _f:
+        BANNED += [_ln.strip() for _ln in _f if _ln.strip() and not _ln.startswith("#")]
 
 
 def relnorm(p):
@@ -113,9 +118,9 @@ def main():
     with open(os.path.join(dest, "打包清单.txt"), "w", encoding="utf-8", newline="\n") as f:
         f.write(f"宝岛文舆 接手包  生成时间 {time.strftime('%Y-%m-%d %H:%M:%S')}  git HEAD {sha}\n")
         f.write(f"文件 {len(copied)} 个，合计 {total/1024/1024:.1f} MB\n\n")
-        f.write("[刻意排除] 内部文档（docs/_internal、data/export、开发方案、胜率评估、gen_odds）"
-                "；可重建大件（data/raw、data/derived、basemap/hillshade 与 *.tif、scripts/*.msi）"
-                "；运行垃圾（__pycache__、*.log、临时与锁文件）\n\n[文件清单]\n")
+        f.write("[刻意排除] 内部目录与本地配置；可重建大件（data/raw、data/derived、"
+                "basemap/hillshade 与 *.tif、scripts/*.msi）；运行垃圾（__pycache__、*.log、临时与锁文件）"
+                "\n\n[文件清单]\n")
         f.write("\n".join(sorted(copied)))
 
     print(f"copied {len(copied)} files, {total/1024/1024:.1f} MB -> {dest}")

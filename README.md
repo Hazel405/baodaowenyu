@@ -32,7 +32,7 @@ D:\宝岛文舆\
 ├── data\                     raw\ derived\ db\tw_20261001.dump\ + registry.csv + DATA_SOURCES.md
 ├── eval\                     30 题问答基准 + 300 条消歧评测 + 裸模型消融（eval_qa30.py）
 ├── docs\                     部署说明（接手必读）、已知限制与改进项、演示分镜、试用量表、历史图摆渡清单
-├── submission\               8 项提交材料（对照规则逐件核销）
+├── tools\                    技术报告生成（gen_docs.py 生成器 / build_docs.py 安全落盘）
 └── scripts\                  start_services.bat / start_web_demo.bat / install_plugin.bat 一键脚本
 ```
 
