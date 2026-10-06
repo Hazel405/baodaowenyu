@@ -210,6 +210,9 @@ def extract_entities(q):
     for w in CN_REG.findall(q):
         if 2 <= len(w) <= 4 and w not in CN_STOP and w not in cands:
             cands.append(w)
+    # 剔除含阿拉伯数字的候选：'20' / '202' / '2024年台湾发生' 等不是地名，混入会污染实体过滤
+    # （点年份的事件/关注度类问句尤甚——数字应交给时间抽取，而非当成实体名去查地名库）
+    cands = [c for c in cands if not re.search(r"[0-9]", c)]
     cur = get_conn().cursor()
     out = []
     for w in cands[:10]:
@@ -233,6 +236,32 @@ def extract_entities(q):
     if not out:
         out = cands[:2]
     return out[:3]
+
+
+def extract_time(q):
+    """从问句抽取时间限定（年份 + 可选月份），返回 (year, month) 或 (None, None)。
+
+    事件 / 关注度类问句里的「2024年」是时间条件、不是地名实体——须与实体抽取分开处理：
+    否则年份既被当作地名送进检索（查不到），真正的时间条件又缺失，导致"有数据却答不出"。
+    """
+    m = re.search(r"(20\d{2})\s*年(?:\s*(\d{1,2})\s*月)?", q)
+    if not m:
+        return None, None
+    yr = int(m.group(1))
+    mo = int(m.group(2)) if m.group(2) else None
+    if mo is not None and not (1 <= mo <= 12):
+        mo = None
+    return yr, mo
+
+
+def time_scope(table, alias, col, yr, mo=None):
+    """生成"限定到某年 / 某月"的子查询片段（列名可指定），供事件、关注度的多段 SQL 复用。"""
+    if mo:
+        lo = f"{yr:04d}-{mo:02d}-01"
+        nxt = f"{yr + 1:04d}-01-01" if mo == 12 else f"{yr:04d}-{mo + 1:02d}-01"
+    else:
+        lo, nxt = f"{yr:04d}-01-01", f"{yr + 1:04d}-01-01"
+    return f"(SELECT * FROM {table} WHERE {col} >= '{lo}' AND {col} < '{nxt}') {alias}"
 
 
 def q_population(q, ents):
@@ -293,9 +322,18 @@ def q_events(q, ents):
         pat = "|".join(pats)
         place_cond = "AND (geo_name ~* %s OR actor1 ~* %s OR actor2 ~* %s)"
         params = [pat, pat, pat]
+    # 时间范围：问句点了年份/月份就按该范围查，未点则沿用"近一年"默认口径。
+    # 原实现把起点写死为 2025-06-01，问「2024年」时范围根本不含目标年份 → 库里有数据却答不出。
+    yr, mo = extract_time(q)
+    if yr:
+        scope = time_scope("tw.events", "ev", "sqldate", yr, mo)
+        tnote = f"{yr}年" + (f"{mo}月" if mo else "")
+    else:
+        scope = "(SELECT * FROM tw.events WHERE sqldate >= '2025-06-01') ev"
+        tnote = "近一年"
     cur.execute(f"""SELECT root_name, rootcode, count(*), round(avg(goldstein)::numeric, 2),
         max(sqldate)::text, min(sqldate)::text
-        FROM tw.events WHERE sqldate >= '2025-06-01' {place_cond}
+        FROM {scope} WHERE 1=1 {place_cond}
         GROUP BY root_name, rootcode ORDER BY 3 DESC LIMIT 8""", params)
     cats = cur.fetchall()
     CN_ROOT = {"01": "表态", "02": "呼吁", "03": "合作意向", "04": "磋商", "05": "外交合作", "06": "物质合作",
@@ -303,25 +341,27 @@ def q_events(q, ents):
                "13": "威胁施压", "14": "制裁", "15": "武力部署", "16": "武装冲突", "17": "强制", "18": "袭击", "19": "战斗", "20": "大规模暴力"}
     cats = [[c[0], CN_ROOT.get(str(c[1])[:2], "") + "类", c[2], c[3], c[4], c[5]] for c in cats]
     cur.execute(f"""SELECT sqldate::text, root_name, geo_name, goldstein, mentions
-        FROM tw.events WHERE 1=1 {place_cond}
+        FROM {scope} WHERE 1=1 {place_cond}
         ORDER BY sqldate DESC, mentions DESC NULLS LAST LIMIT 8""", params)
     recent = cur.fetchall()
-    cur.execute(f"""SELECT to_char(sqldate, 'YYYY-MM') m, count(*) FROM tw.events
-        WHERE sqldate >= '2024-01-01' {place_cond} GROUP BY to_char(sqldate, 'YYYY-MM') ORDER BY m""", params)
+    cur.execute(f"""SELECT to_char(sqldate, 'YYYY-MM') m, count(*) FROM {scope}
+        WHERE 1=1 {place_cond} GROUP BY to_char(sqldate, 'YYYY-MM') ORDER BY m""", params)
     monthly = cur.fetchall()
     cur.execute("SELECT min(sqldate)::text, max(sqldate)::text, count(*) FROM tw.events")
     span = cur.fetchone()
-    # 问题点名的类别做定向计数（不受 top8 截断影响）
+    # 问题点名的类别做定向计数（在时间范围内统计，不受 top8 截断影响）
     FOCUS = [("抗议", "12"), ("战斗", "19"), ("袭击", "18"), ("制裁", "14"), ("威胁", "13"), ("磋商", "04"), ("部署", "15")]
     focus = []
     for kw, code in FOCUS:
         if kw in q:
-            cur.execute(f"""SELECT count(*) FROM tw.events WHERE rootcode LIKE %s
-                AND sqldate >= (SELECT max(sqldate) FROM tw.events) - interval '365 days' {place_cond}""",
-                [code + "%"] + params)
-            focus.append(f"{kw}类(CAMEO {code})近一年 {cur.fetchone()[0]} 条")
+            cur.execute(f"""SELECT count(*) FROM {scope} WHERE rootcode LIKE %s {place_cond}""",
+                        [code + "%"] + params)
+            focus.append(f"{kw}类(CAMEO {code}) {tnote} {cur.fetchone()[0]} 条")
+    cur.execute(f"SELECT count(*) FROM {scope} WHERE 1=1 {place_cond}", params)
+    scope_n = cur.fetchone()[0]
     sources = ["tw.events（GDELT 1.0 双周采样，月分区表）"]
-    return {"收录时间范围": f"{span[0]} 至 {span[1]}，共 {span[2]} 条",
+    return {"时间范围": tnote, "该范围事件数": scope_n,
+            "收录时间范围": f"{span[0]} 至 {span[1]}，共 {span[2]} 条",
             "指定类别": focus, "categories": cats, "recent": recent, "monthly": monthly[-12:]}, sources
 
 
@@ -461,23 +501,30 @@ def q_place(q, ents):
 
 def q_attention(q, ents):
     cur = get_conn().cursor()
-    cur.execute("SELECT d::text, volume FROM tw.ts_attention ORDER BY d DESC LIMIT 2")
+    # 关注度同样支持问句的时间限定（原实现固定取全表最新值，问「2024年」答不出）
+    yr, mo = extract_time(q)
+    if yr:
+        scope = time_scope("tw.ts_attention", "ta", "d", yr, mo)
+        tnote = f"{yr}年" + (f"{mo}月" if mo else "")
+    else:
+        scope, tnote = "tw.ts_attention", "全时段"
+    cur.execute(f"SELECT d::text, volume FROM {scope} ORDER BY d DESC LIMIT 2")
     latest = cur.fetchall()
-    cur.execute("SELECT round(avg(volume)::numeric, 3), max(volume), min(volume) FROM tw.ts_attention")
+    cur.execute(f"SELECT round(avg(volume)::numeric, 3), max(volume), min(volume) FROM {scope}")
     stat = cur.fetchone()
-    cur.execute("SELECT d::text, volume FROM tw.ts_attention ORDER BY volume DESC LIMIT 1")
+    cur.execute(f"SELECT d::text, volume FROM {scope} ORDER BY volume DESC LIMIT 1")
     peak = cur.fetchone()
-    cur.execute("""SELECT d::text, volume FROM tw.ts_attention
-                   WHERE d >= (SELECT max(d) FROM tw.ts_attention) - interval '30 days' ORDER BY d""")
+    cur.execute(f"""SELECT d::text, volume FROM {scope}
+                   WHERE d >= (SELECT max(d) FROM {scope}) - interval '30 days' ORDER BY d""")
     recent30 = cur.fetchall()
-    cur.execute("""SELECT to_char(date_trunc('month', d), 'YYYY-MM') m, round(avg(volume)::numeric, 3)
-                   FROM tw.ts_attention GROUP BY 1 ORDER BY 1""")
+    cur.execute(f"""SELECT to_char(date_trunc('month', d), 'YYYY-MM') m, round(avg(volume)::numeric, 3)
+                   FROM {scope} GROUP BY 1 ORDER BY 1""")
     monthly = cur.fetchall()
-    cur.execute("SELECT d::text, volume FROM tw.ts_attention ORDER BY d DESC OFFSET 364 LIMIT 1")
+    cur.execute(f"SELECT d::text, volume FROM {scope} ORDER BY d DESC OFFSET 364 LIMIT 1")
     year_ago = cur.fetchone()
     sources = ["tw.ts_attention（GDELT DOC timeline，710 天每日）"]
-    return {"latest": latest, "avg_max_min": stat, "peak": peak, "recent_30d": recent30[-10:],
-            "monthly_avg": monthly[-13:], "year_ago": year_ago}, sources
+    return {"时间范围": tnote, "latest": latest, "avg_max_min": stat, "peak": peak,
+            "recent_30d": recent30[-10:], "monthly_avg": monthly[-13:], "year_ago": year_ago}, sources
 
 
 class Ask(BaseModel):
@@ -674,6 +721,10 @@ def ask(body: Ask):
         data, sources = [], [f"查询失败: {str(e)[:80]}"]
 
     ctx = json.dumps(data, ensure_ascii=False, default=str)[:3500]
+    srcs = list(dict.fromkeys(sources))[:4]
+    # 本次实际来源表名写进提示词：原先示例把表名写死成 tw_demo_countypop，模型会照抄该示例，
+    # 于是事件/关注度/地名等问题的来源全被标成人口表（演示界面「引用来源」区可见）。
+    src_tables = "、".join(s.split("（")[0].strip() for s in srcs) or "本地数据库"
     prompt = f"""你是"地志智询"——台湾人文地理数据助手。只根据下面提供的查询结果回答问题，不要编造数据。
 如果查询结果为空或无法回答，明确说明。回答末尾用【来源：…】标注数据表。
 
@@ -682,7 +733,7 @@ def ask(body: Ask):
 
 用户问题：{q}
 
-要求：用中文简洁回答（不超过150字），数字必须来自查询结果；回答中禁止出现JSON原文、字段名或花括号，来源只写数据表名（如【来源：tw_demo_countypop】）；若查询结果含说明性文字（如数据缺口记档、口径说明），请如实转述其中的数字与结论，不要说"没有数据"；若查询结果有多个同名条目，逐条列出各自的县市/乡镇与坐标，不要只挑一个。"""
+要求：用中文简洁回答（不超过150字），数字必须来自查询结果；回答中禁止出现JSON原文、字段名或花括号；来源只能写下列本次实际用到的数据表名之一（【来源：…】），不要写其他表名：{src_tables}；若查询结果含说明性文字（如数据缺口记档、口径说明），请如实转述其中的数字与结论，不要说"没有数据"；若查询结果有多个同名条目，逐条列出各自的县市/乡镇与坐标，不要只挑一个。"""
     try:
         answer = ollama_gen("qwen3:8b", "/no_think\n" + prompt)
         answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.S).strip()
@@ -690,7 +741,6 @@ def ask(body: Ask):
             answer = "（模型未生成正文——请重试或减小问题复杂度）"
     except Exception as e:
         answer = f"生成失败: {str(e)[:100]}"
-    srcs = list(dict.fromkeys(sources))[:4]
     srcs.append("qwen3:8b 本地生成（Ollama）")
     return {"intent": intent, "entities": ents, "answer": answer,
             "sources": srcs, "elapsed": round(time.time() - t0, 1)}
