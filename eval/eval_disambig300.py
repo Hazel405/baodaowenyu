@@ -12,7 +12,7 @@ import psycopg2
 
 PG = dict(host="127.0.0.1", port=5433, user="postgres", dbname="tw")
 API = "http://127.0.0.1:8600/api/ask"
-OUT = r"D:\宝岛文舆\eval\outputs"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")  # 相对脚本自身定位，避免硬编码旧机路径
 
 EN2CN = {"Taipei":"台北市","NewTaipei":"新北市","Taoyuan":"桃園市","Taichung":"台中市","Tainan":"台南市",
          "Kaohsiung":"高雄市","Keelung":"基隆市","HsinchuCity":"新竹市","HsinchuCounty":"新竹縣",
