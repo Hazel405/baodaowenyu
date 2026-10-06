@@ -1,0 +1,669 @@
+12e4f29 | 2026-10-06 10:46 | 改进A：地名简繁归一 19字表 → OpenCC词级 + 709字兜底表（还原率 30.52%→84.55%）
+ ...203\250\347\275\262\350\257\264\346\230\216.md" |  7 +-
+ eval/eval_qa30.py                                  |  9 +-
+ eval/measure_s2t.py                                | 97 ++++++++++++++++++++++
+ scripts/build_demo_project.py                      |  9 +-
+ server/rag_server.py                               | 34 ++++++--
+ ...241\214\345\212\250\346\211\213\345\206\214.md" |  3 +-
+ 6 files changed, 144 insertions(+), 15 deletions(-)
+
+cf39794 | 2026-10-05 20:55 | 文档口径订正：转储表数 73→75（重建版含 3 张人口表、剔除非民用要素表，净 +2）
+ data/DATA_SOURCES.md                                       | 2 +-
+ "docs/\351\203\250\347\275\262\350\257\264\346\230\216.md" | 2 +-
+ "\351\203\250\347\275\262\350\257\264\346\230\216.md"      | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+8956636 | 2026-10-04 16:00 | 数据库转储重建（2026-10-04）：补齐 tw.pop_county/pop_town/cities_major 三张人口表（矢量瓦片 MVT_LAYERS、QGIS 浏览面板、网页导出三处依赖）；按合规剔除 非民用要素表 及其序列；部署说明同步转储版本与体积
+ "docs/\351\203\250\347\275\262\350\257\264\346\230\216.md" | 2 +-
+ "\351\203\250\347\275\262\350\257\264\346\230\216.md"      | 6 +++++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+1f7cdce | 2026-10-03 12:03 | 换机适配修复：serve_tiles/plugin.py/compare.py 硬编码路径改为自动探测；open_demo 修正 PyQGIS API（QgsProject.read）；start_services.bat 依赖自检与 ASCII 降级路径；补充部署说明/行动手册/报告 v2
+ plugin/baodao_wenyu/metadata.txt                   |     2 +-
+ plugin/baodao_wenyu/panels/compare.py              |    16 +-
+ plugin/baodao_wenyu/plugin.py                      |    43 +-
+ scripts/start_services.bat                         |    15 +-
+ server/serve_tiles.py                              |     6 +-
+ "\344\273\243\347\240\201/gen_docs.py"             |    92 +-
+ ...11\223\345\214\205\346\270\205\345\215\225.txt" | 24639 +++++++++++++++++++
+ ...35\345\262\233\346\226\207\350\210\206_v2.docx" |   Bin 0 -> 2129898 bytes
+ ...235\345\262\233\346\226\207\350\210\206_v2.pdf" |   Bin 0 -> 786846 bytes
+ ...241\214\345\212\250\346\211\213\345\206\214.md" |   303 +
+ ...203\250\347\275\262\350\257\264\346\230\216.md" |   191 +
+ 11 files changed, 25269 insertions(+), 38 deletions(-)
+
+2b74763 | 2026-10-02 00:23 | 修复 make_tiles_terrain.py 语法错误（ROOT 赋值行内混入字面 \n，迁 D 盘后从未成功运行过）；docstring 更新为 D 盘用法
+ pipeline/make_tiles_terrain.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+6c99e20 | 2026-10-02 00:20 | 接手交付：部署说明 + 打包脚本 + 数据库配置外置
+ .gitignore                                         |   3 +
+ README.md                                          |   7 +-
+ config_local.example.py                            |  31 ++++
+ ...270\216\346\224\271\350\277\233\351\241\271.md" |  10 ++
+ ...203\250\347\275\262\350\257\264\346\230\216.md" | 191 +++++++++++++++++++++
+ pipeline/make_handoff.py                           | 135 +++++++++++++++
+ server/rag_server.py                               |  47 ++++-
+ 7 files changed, 415 insertions(+), 9 deletions(-)
+
+e49199a | 2026-10-01 23:37 | web：?offline=1 强制离线模式（答辩机演示降级路径不必停服务）
+ web/README.md  | 5 +++++
+ web/app.js     | 8 +++++---
+ web/index.html | 2 +-
+ 3 files changed, 11 insertions(+), 4 deletions(-)
+
+34ec5cf | 2026-10-01 23:31 | 新增双模式网页查看端 web/：MVT 矢量瓦片 + 问答实体落图，离线快照兜底
+ README.md                                          |  30 +-
+ pipeline/build_web_tiles.py                        |  45 +++
+ pipeline/export_web_data.py                        |  95 +++++
+ scripts/start_web_demo.bat                         |  13 +
+ server/rag_server.py                               | 148 ++++++++
+ server/serve_tiles.py                              |  43 ++-
+ ...235\220\346\226\231\346\270\205\345\215\225.md" |   2 +-
+ web/README.md                                      |  49 +++
+ web/app.js                                         | 408 +++++++++++++++++++++
+ web/data/cities.geojson                            |   1 +
+ web/data/county_line.geojson                       |   1 +
+ web/data/events_2026.geojson                       |   1 +
+ web/data/manifest.json                             |  62 ++++
+ web/data/peaks.geojson                             |   1 +
+ web/data/places.geojson                            |   1 +
+ web/data/pop_county.geojson                        |   1 +
+ web/data/ports.geojson                             |   1 +
+ web/data/power.geojson                             |   1 +
+ web/data/town.geojson                              |   1 +
+ web/index.html                                     |  77 ++++
+ web/style.css                                      |  86 +++++
+ web/tiles/street/0/0/0.png                         | Bin 0 -> 876 bytes
+ web/tiles/street/1/1/0.png                         | Bin 0 -> 902 bytes
+ web/tiles/street/10/847/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/847/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/439.png                    | Bin 0 -> 799 bytes
+ web/tiles/street/10/848/440.png                    | Bin 0 -> 2437 bytes
+ web/tiles/street/10/848/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/848/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/440.png                    | Bin 0 -> 804 bytes
+ web/tiles/street/10/849/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/849/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/850/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/436.png                    | Bin 0 -> 1400 bytes
+ web/tiles/street/10/851/437.png                    | Bin 0 -> 3002 bytes
+ web/tiles/street/10/851/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/442.png                    | Bin 0 -> 1481 bytes
+ web/tiles/street/10/851/443.png                    | Bin 0 -> 1436 bytes
+ web/tiles/street/10/851/444.png                    | Bin 0 -> 1016 bytes
+ web/tiles/street/10/851/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/851/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/436.png                    | Bin 0 -> 2150 bytes
+ web/tiles/street/10/852/437.png                    | Bin 0 -> 3588 bytes
+ web/tiles/street/10/852/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/442.png                    | Bin 0 -> 3109 bytes
+ web/tiles/street/10/852/443.png                    | Bin 0 -> 3166 bytes
+ web/tiles/street/10/852/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/852/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/434.png                    | Bin 0 -> 2354 bytes
+ web/tiles/street/10/853/435.png                    | Bin 0 -> 995 bytes
+ web/tiles/street/10/853/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/442.png                    | Bin 0 -> 4595 bytes
+ web/tiles/street/10/853/443.png                    | Bin 0 -> 8279 bytes
+ web/tiles/street/10/853/444.png                    | Bin 0 -> 9087 bytes
+ web/tiles/street/10/853/445.png                    | Bin 0 -> 2171 bytes
+ web/tiles/street/10/853/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/853/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/434.png                    | Bin 0 -> 990 bytes
+ web/tiles/street/10/854/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/440.png                    | Bin 0 -> 4042 bytes
+ web/tiles/street/10/854/441.png                    | Bin 0 -> 15524 bytes
+ web/tiles/street/10/854/442.png                    | Bin 0 -> 18924 bytes
+ web/tiles/street/10/854/443.png                    | Bin 0 -> 20388 bytes
+ web/tiles/street/10/854/444.png                    | Bin 0 -> 20331 bytes
+ web/tiles/street/10/854/445.png                    | Bin 0 -> 20706 bytes
+ web/tiles/street/10/854/446.png                    | Bin 0 -> 9560 bytes
+ web/tiles/street/10/854/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/854/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/438.png                    | Bin 0 -> 888 bytes
+ web/tiles/street/10/855/439.png                    | Bin 0 -> 10154 bytes
+ web/tiles/street/10/855/440.png                    | Bin 0 -> 17378 bytes
+ web/tiles/street/10/855/441.png                    | Bin 0 -> 17986 bytes
+ web/tiles/street/10/855/442.png                    | Bin 0 -> 12859 bytes
+ web/tiles/street/10/855/443.png                    | Bin 0 -> 8093 bytes
+ web/tiles/street/10/855/444.png                    | Bin 0 -> 8007 bytes
+ web/tiles/street/10/855/445.png                    | Bin 0 -> 7000 bytes
+ web/tiles/street/10/855/446.png                    | Bin 0 -> 7887 bytes
+ web/tiles/street/10/855/447.png                    | Bin 0 -> 8547 bytes
+ web/tiles/street/10/855/448.png                    | Bin 0 -> 1544 bytes
+ web/tiles/street/10/855/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/855/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/438.png                    | Bin 0 -> 19613 bytes
+ web/tiles/street/10/856/439.png                    | Bin 0 -> 16989 bytes
+ web/tiles/street/10/856/440.png                    | Bin 0 -> 5396 bytes
+ web/tiles/street/10/856/441.png                    | Bin 0 -> 6848 bytes
+ web/tiles/street/10/856/442.png                    | Bin 0 -> 4685 bytes
+ web/tiles/street/10/856/443.png                    | Bin 0 -> 3267 bytes
+ web/tiles/street/10/856/444.png                    | Bin 0 -> 7839 bytes
+ web/tiles/street/10/856/445.png                    | Bin 0 -> 8498 bytes
+ web/tiles/street/10/856/446.png                    | Bin 0 -> 1602 bytes
+ web/tiles/street/10/856/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/856/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/437.png                    | Bin 0 -> 5005 bytes
+ web/tiles/street/10/857/438.png                    | Bin 0 -> 22672 bytes
+ web/tiles/street/10/857/439.png                    | Bin 0 -> 7536 bytes
+ web/tiles/street/10/857/440.png                    | Bin 0 -> 5062 bytes
+ web/tiles/street/10/857/441.png                    | Bin 0 -> 8352 bytes
+ web/tiles/street/10/857/442.png                    | Bin 0 -> 9105 bytes
+ web/tiles/street/10/857/443.png                    | Bin 0 -> 6129 bytes
+ web/tiles/street/10/857/444.png                    | Bin 0 -> 3163 bytes
+ web/tiles/street/10/857/445.png                    | Bin 0 -> 1075 bytes
+ web/tiles/street/10/857/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/447.png                    | Bin 0 -> 1286 bytes
+ web/tiles/street/10/857/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/857/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/437.png                    | Bin 0 -> 1668 bytes
+ web/tiles/street/10/858/438.png                    | Bin 0 -> 13487 bytes
+ web/tiles/street/10/858/439.png                    | Bin 0 -> 10326 bytes
+ web/tiles/street/10/858/440.png                    | Bin 0 -> 5016 bytes
+ web/tiles/street/10/858/441.png                    | Bin 0 -> 1422 bytes
+ web/tiles/street/10/858/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/858/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/436.png                    | Bin 0 -> 850 bytes
+ web/tiles/street/10/859/437.png                    | Bin 0 -> 792 bytes
+ web/tiles/street/10/859/438.png                    | Bin 0 -> 974 bytes
+ web/tiles/street/10/859/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/859/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/860/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/433.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/434.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/435.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/436.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/437.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/438.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/439.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/440.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/441.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/442.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/443.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/444.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/445.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/446.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/447.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/448.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/449.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/450.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/10/861/451.png                    | Bin 0 -> 762 bytes
+ web/tiles/street/2/3/1.png                         | Bin 0 -> 980 bytes
+ web/tiles/street/3/6/3.png                         | Bin 0 -> 1115 bytes
+ web/tiles/street/4/13/6.png                        | Bin 0 -> 1455 bytes
+ web/tiles/street/4/13/7.png                        | Bin 0 -> 791 bytes
+ web/tiles/street/5/26/13.png                       | Bin 0 -> 2270 bytes
+ web/tiles/street/5/26/14.png                       | Bin 0 -> 812 bytes
+ web/tiles/street/6/52/25.png                       | Bin 0 -> 762 bytes
+ web/tiles/street/6/52/27.png                       | Bin 0 -> 762 bytes
+ web/tiles/street/6/52/28.png                       | Bin 0 -> 790 bytes
+ web/tiles/street/6/53/27.png                       | Bin 0 -> 4034 bytes
+ web/tiles/street/6/53/28.png                       | Bin 0 -> 803 bytes
+ web/tiles/street/7/105/54.png                      | Bin 0 -> 762 bytes
+ web/tiles/street/7/105/55.png                      | Bin 0 -> 762 bytes
+ web/tiles/street/7/105/56.png                      | Bin 0 -> 792 bytes
+ web/tiles/street/7/106/54.png                      | Bin 0 -> 1856 bytes
+ web/tiles/street/7/106/55.png                      | Bin 0 -> 6745 bytes
+ web/tiles/street/7/106/56.png                      | Bin 0 -> 829 bytes
+ web/tiles/street/7/107/54.png                      | Bin 0 -> 3381 bytes
+ web/tiles/street/7/107/55.png                      | Bin 0 -> 2889 bytes
+ web/tiles/street/7/107/56.png                      | Bin 0 -> 762 bytes
+ web/tiles/street/8/211/108.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/211/109.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/211/110.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/211/111.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/211/112.png                     | Bin 0 -> 794 bytes
+ web/tiles/street/8/212/108.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/212/109.png                     | Bin 0 -> 1180 bytes
+ web/tiles/street/8/212/110.png                     | Bin 0 -> 2040 bytes
+ web/tiles/street/8/212/111.png                     | Bin 0 -> 842 bytes
+ web/tiles/street/8/212/112.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/213/108.png                     | Bin 0 -> 2022 bytes
+ web/tiles/street/8/213/109.png                     | Bin 0 -> 2198 bytes
+ web/tiles/street/8/213/110.png                     | Bin 0 -> 15013 bytes
+ web/tiles/street/8/213/111.png                     | Bin 0 -> 9444 bytes
+ web/tiles/street/8/213/112.png                     | Bin 0 -> 891 bytes
+ web/tiles/street/8/214/108.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/214/109.png                     | Bin 0 -> 12569 bytes
+ web/tiles/street/8/214/110.png                     | Bin 0 -> 5077 bytes
+ web/tiles/street/8/214/111.png                     | Bin 0 -> 3088 bytes
+ web/tiles/street/8/214/112.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/215/108.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/215/109.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/215/110.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/215/111.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/8/215/112.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/217.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/218.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/219.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/220.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/221.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/222.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/223.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/224.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/423/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/217.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/218.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/219.png                     | Bin 0 -> 783 bytes
+ web/tiles/street/9/424/220.png                     | Bin 0 -> 2049 bytes
+ web/tiles/street/9/424/221.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/222.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/223.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/224.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/424/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/425/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/425/217.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/425/218.png                     | Bin 0 -> 1652 bytes
+ web/tiles/street/9/425/219.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/425/220.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/425/221.png                     | Bin 0 -> 1361 bytes
+ web/tiles/street/9/425/222.png                     | Bin 0 -> 897 bytes
+ web/tiles/street/9/425/223.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/425/224.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/425/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/426/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/426/217.png                     | Bin 0 -> 2228 bytes
+ web/tiles/street/9/426/218.png                     | Bin 0 -> 2021 bytes
+ web/tiles/street/9/426/219.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/426/220.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/426/221.png                     | Bin 0 -> 6965 bytes
+ web/tiles/street/9/426/222.png                     | Bin 0 -> 3798 bytes
+ web/tiles/street/9/426/223.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/426/224.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/426/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/427/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/427/217.png                     | Bin 0 -> 885 bytes
+ web/tiles/street/9/427/218.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/427/219.png                     | Bin 0 -> 4240 bytes
+ web/tiles/street/9/427/220.png                     | Bin 0 -> 17338 bytes
+ web/tiles/street/9/427/221.png                     | Bin 0 -> 21390 bytes
+ web/tiles/street/9/427/222.png                     | Bin 0 -> 18940 bytes
+ web/tiles/street/9/427/223.png                     | Bin 0 -> 9574 bytes
+ web/tiles/street/9/427/224.png                     | Bin 0 -> 1057 bytes
+ web/tiles/street/9/427/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/428/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/428/217.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/428/218.png                     | Bin 0 -> 2238 bytes
+ web/tiles/street/9/428/219.png                     | Bin 0 -> 22408 bytes
+ web/tiles/street/9/428/220.png                     | Bin 0 -> 8644 bytes
+ web/tiles/street/9/428/221.png                     | Bin 0 -> 9188 bytes
+ web/tiles/street/9/428/222.png                     | Bin 0 -> 7489 bytes
+ web/tiles/street/9/428/223.png                     | Bin 0 -> 1287 bytes
+ web/tiles/street/9/428/224.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/428/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/429/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/429/217.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/429/218.png                     | Bin 0 -> 1231 bytes
+ web/tiles/street/9/429/219.png                     | Bin 0 -> 9161 bytes
+ web/tiles/street/9/429/220.png                     | Bin 0 -> 2414 bytes
+ web/tiles/street/9/429/221.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/429/222.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/429/223.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/429/224.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/429/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/216.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/217.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/218.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/219.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/220.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/221.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/222.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/223.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/224.png                     | Bin 0 -> 762 bytes
+ web/tiles/street/9/430/225.png                     | Bin 0 -> 762 bytes
+ web/tiles/terrain/0/0/0.png                        | Bin 0 -> 446 bytes
+ web/tiles/terrain/1/1/0.png                        | Bin 0 -> 585 bytes
+ web/tiles/terrain/2/3/1.png                        | Bin 0 -> 897 bytes
+ web/tiles/terrain/3/6/3.png                        | Bin 0 -> 1691 bytes
+ web/tiles/terrain/4/13/6.png                       | Bin 0 -> 3752 bytes
+ web/tiles/terrain/4/13/7.png                       | Bin 0 -> 631 bytes
+ web/tiles/terrain/5/26/13.png                      | Bin 0 -> 10629 bytes
+ web/tiles/terrain/5/26/14.png                      | Bin 0 -> 982 bytes
+ web/tiles/terrain/6/53/27.png                      | Bin 0 -> 33018 bytes
+ web/tiles/terrain/6/53/28.png                      | Bin 0 -> 1999 bytes
+ web/tiles/terrain/7/106/54.png                     | Bin 0 -> 11555 bytes
+ web/tiles/terrain/7/106/55.png                     | Bin 0 -> 42224 bytes
+ web/tiles/terrain/7/106/56.png                     | Bin 0 -> 3173 bytes
+ web/tiles/terrain/7/107/54.png                     | Bin 0 -> 17407 bytes
+ web/tiles/terrain/7/107/55.png                     | Bin 0 -> 39852 bytes
+ web/tiles/terrain/7/107/56.png                     | Bin 0 -> 2477 bytes
+ web/tiles/terrain/8/212/109.png                    | Bin 0 -> 13671 bytes
+ web/tiles/terrain/8/212/110.png                    | Bin 0 -> 1833 bytes
+ web/tiles/terrain/8/212/111.png                    | Bin 0 -> 1347 bytes
+ web/tiles/terrain/8/212/112.png                    | Bin 0 -> 679 bytes
+ web/tiles/terrain/8/213/109.png                    | Bin 0 -> 23466 bytes
+ web/tiles/terrain/8/213/110.png                    | Bin 0 -> 63954 bytes
+ web/tiles/terrain/8/213/111.png                    | Bin 0 -> 77332 bytes
+ web/tiles/terrain/8/213/112.png                    | Bin 0 -> 8647 bytes
+ web/tiles/terrain/8/214/109.png                    | Bin 0 -> 53848 bytes
+ web/tiles/terrain/8/214/110.png                    | Bin 0 -> 83219 bytes
+ web/tiles/terrain/8/214/111.png                    | Bin 0 -> 47323 bytes
+ web/tiles/terrain/8/214/112.png                    | Bin 0 -> 6345 bytes
+ web/tiles/terrain/8/215/109.png                    | Bin 0 -> 750 bytes
+ web/tiles/terrain/8/215/110.png                    | Bin 0 -> 868 bytes
+ web/tiles/terrain/8/215/111.png                    | Bin 0 -> 868 bytes
+ web/tiles/terrain/8/215/112.png                    | Bin 0 -> 684 bytes
+ web/tiles/terrain/9/425/218.png                    | Bin 0 -> 29799 bytes
+ web/tiles/terrain/9/425/219.png                    | Bin 0 -> 14060 bytes
+ web/tiles/terrain/9/425/220.png                    | Bin 0 -> 862 bytes
+ web/tiles/terrain/9/425/221.png                    | Bin 0 -> 3242 bytes
+ web/tiles/terrain/9/425/222.png                    | Bin 0 -> 2036 bytes
+ web/tiles/terrain/9/425/223.png                    | Bin 0 -> 862 bytes
+ web/tiles/terrain/9/425/224.png                    | Bin 0 -> 862 bytes
+ web/tiles/terrain/9/425/225.png                    | Bin 0 -> 492 bytes
+ web/tiles/terrain/9/426/218.png                    | Bin 0 -> 54547 bytes
+ web/tiles/terrain/9/426/219.png                    | Bin 0 -> 9224 bytes
+ web/tiles/terrain/9/426/220.png                    | Bin 0 -> 857 bytes
+ web/tiles/terrain/9/426/221.png                    | Bin 0 -> 25033 bytes
+ web/tiles/terrain/9/426/222.png                    | Bin 0 -> 25821 bytes
+ web/tiles/terrain/9/426/223.png                    | Bin 0 -> 857 bytes
+ web/tiles/terrain/9/426/224.png                    | Bin 0 -> 857 bytes
+ web/tiles/terrain/9/426/225.png                    | Bin 0 -> 488 bytes
+ web/tiles/terrain/9/427/218.png                    | Bin 0 -> 622 bytes
+ web/tiles/terrain/9/427/219.png                    | Bin 0 -> 11091 bytes
+ web/tiles/terrain/9/427/220.png                    | Bin 0 -> 69443 bytes
+ web/tiles/terrain/9/427/221.png                    | Bin 0 -> 119310 bytes
+ web/tiles/terrain/9/427/222.png                    | Bin 0 -> 137844 bytes
+ web/tiles/terrain/9/427/223.png                    | Bin 0 -> 109476 bytes
+ web/tiles/terrain/9/427/224.png                    | Bin 0 -> 25702 bytes
+ web/tiles/terrain/9/427/225.png                    | Bin 0 -> 488 bytes
+ web/tiles/terrain/9/428/218.png                    | Bin 0 -> 6685 bytes
+ web/tiles/terrain/9/428/219.png                    | Bin 0 -> 96661 bytes
+ web/tiles/terrain/9/428/220.png                    | Bin 0 -> 100951 bytes
+ web/tiles/terrain/9/428/221.png                    | Bin 0 -> 96095 bytes
+ web/tiles/terrain/9/428/222.png                    | Bin 0 -> 94044 bytes
+ web/tiles/terrain/9/428/223.png                    | Bin 0 -> 53331 bytes
+ web/tiles/terrain/9/428/224.png                    | Bin 0 -> 15477 bytes
+ web/tiles/terrain/9/428/225.png                    | Bin 0 -> 488 bytes
+ web/tiles/terrain/9/429/218.png                    | Bin 0 -> 2502 bytes
+ web/tiles/terrain/9/429/219.png                    | Bin 0 -> 68731 bytes
+ web/tiles/terrain/9/429/220.png                    | Bin 0 -> 55552 bytes
+ web/tiles/terrain/9/429/221.png                    | Bin 0 -> 19641 bytes
+ web/tiles/terrain/9/429/222.png                    | Bin 0 -> 1065 bytes
+ web/tiles/terrain/9/429/223.png                    | Bin 0 -> 857 bytes
+ web/tiles/terrain/9/429/224.png                    | Bin 0 -> 3866 bytes
+ web/tiles/terrain/9/429/225.png                    | Bin 0 -> 488 bytes
+ web/tiles/terrain/9/430/218.png                    | Bin 0 -> 630 bytes
+ web/tiles/terrain/9/430/219.png                    | Bin 0 -> 866 bytes
+ web/tiles/terrain/9/430/220.png                    | Bin 0 -> 866 bytes
+ web/tiles/terrain/9/430/221.png                    | Bin 0 -> 866 bytes
+ web/tiles/terrain/9/430/222.png                    | Bin 0 -> 866 bytes
+ web/tiles/terrain/9/430/223.png                    | Bin 0 -> 866 bytes
+ web/tiles/terrain/9/430/224.png                    | Bin 0 -> 866 bytes
+ web/tiles/terrain/9/430/225.png                    | Bin 0 -> 497 bytes
+ web/vendor/maplibre-gl.css                         |   1 +
+ web/vendor/maplibre-gl.js                          |  59 +++
+ "\344\273\243\347\240\201/gen_docs.py"             |  20 +-
+ ...35\345\262\233\346\226\207\350\210\206_v1.docx" | Bin 2104064 -> 2104307 bytes
+ 517 files changed, 1116 insertions(+), 31 deletions(-)
+
+556afc4 | 2026-10-01 22:26 | 清理：移除 API 探测脚本（probe1-4），仓库仅保留可复现的构建/冒烟/评测脚本
+04eae67 | 2026-10-01 22:25 | 仓库分发面收敛：内部文档移出开源仓库
+ .gitignore                                         |  18 ++++----
+ ...235\220\346\226\231\346\270\205\345\215\225.md" |   7 ++--
+ "\344\273\243\347\240\201/build_docs.py"           |  16 +++++--
+ "\344\273\243\347\240\201/gen_docs.py"             |  46 ---------------------
+ ...35\345\262\233\346\226\207\350\210\206_v1.docx" | Bin 2104064 -> 2104064 bytes
+ 5 files changed, 26 insertions(+), 61 deletions(-)
+
+4812d30 | 2026-10-01 22:21 | 技术报告重出：回填 300 题同名消歧实测与演示工程证据
+ .gitignore                                         |   5 ++
+ README.md                                          |   2 +-
+ data/DATA_SOURCES.md                               |   3 +-
+ demo_project.qgz                                   | Bin 16180 -> 16140 bytes
+ docs/figures/fig_demo_preview.png                  | Bin 302352 -> 635139 bytes
+ docs/figures/fig_lan_island.png                    | Bin 557100 -> 548584 bytes
+ ...270\216\346\224\271\350\277\233\351\241\271.md" |  69 +++++++++++++++++
+ ...247\206\351\242\221\345\210\206\351\225\234.md" |   2 +-
+ plugin/baodao_wenyu/panels/compare.py              |   3 +-
+ plugin/baodao_wenyu/plugin.py                      |   4 +-
+ scripts/build_demo_project.py                      |  55 +++++++++-----
+ scripts/qgis_capture.py                            |   7 +-
+ "\344\273\243\347\240\201/build_docs.py"           |  41 ++++++++++
+ "\344\273\243\347\240\201/gen_docs.py"             |  84 +++++++++++++--------
+ ...35\345\262\233\346\226\207\350\210\206_v1.docx" | Bin 1481552 -> 2104064 bytes
+ 15 files changed, 220 insertions(+), 55 deletions(-)
+
+a75988f | 2026-10-01 21:11 | 演示工程 demo_project.qgz：人口分级/中文标注/事件/路网一键满屏；新增 pop_county/pop_town/cities_major 带主键表；实时图层工作台；CRS 白屏修复
+ demo_project.qgz                                   | Bin 0 -> 16180 bytes
+ docs/figures/fig_demo_preview.png                  | Bin 0 -> 302352 bytes
+ ...257\225\347\224\250\351\207\217\350\241\250.md" |   2 +-
+ eval/eval_qa30.py                                  |   2 +-
+ plugin/baodao_wenyu/icon.png                       | Bin 0 -> 2713 bytes
+ plugin/baodao_wenyu/panels/browse.py               | 124 ++++++++++++++++-----
+ plugin/baodao_wenyu/plugin.py                      |  45 ++++++--
+ scripts/build_demo_project.py                      | 123 ++++++++++++++++++++
+ scripts/run_build_project.bat                      |   2 +
+ server/rag_server.py                               |  35 ++++--
+ 10 files changed, 288 insertions(+), 45 deletions(-)
+
+7dd2fbf | 2026-10-01 10:07 | submission: 仓库状态更新
+ "submission/\346\235\220\346\226\231\346\270\205\345\215\225.md" | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+0dfec4d | 2026-10-01 10:07 | docs: 数据字典/用户试用量表/演示视频分镜
+ ...247\206\351\242\221\345\210\206\351\225\234.md" | 22 +++++++++++++++
+ ...257\225\347\224\250\351\207\217\350\241\250.md" | 32 ++++++++++++++++++++++
+ 2 files changed, 54 insertions(+)
+
+9246769 | 2026-10-01 10:04 | 宝岛文舆 v0.1：QGIS 插件四工作台 + 开源自产底图管线 + 防幻觉地志 RAG + 30 题基准与消融评测
+ .gitignore                                         |  25 ++
+ LICENSE                                            |  18 +
+ README.md                                          |  56 +++
+ data/DATA_SOURCES.md                               |  19 +
+ data/README.md                                     |  30 ++
+ data/registry.csv                                  |   6 +
+ docs/figures/fig_jiao_overlay.png                  | Bin 0 -> 305654 bytes
+ docs/figures/fig_lan_island.png                    | Bin 0 -> 557100 bytes
+ docs/figures/fig_lan_taipei.png                    | Bin 0 -> 563291 bytes
+ docs/figures/fig_xi_analysis.png                   | Bin 0 -> 8262 bytes
+ docs/figures/fig_xun_qa.png                        | Bin 0 -> 6122 bytes
+ ...216\267\345\217\226\346\270\205\345\215\225.md" |  23 +
+ eval/eval_disambig300.py                           | 128 ++++++
+ eval/eval_qa30.py                                  |  93 ++++
+ pipeline/import_boundary.py                        |  60 +++
+ pipeline/import_phase1.py                          | 160 +++++++
+ pipeline/import_phase3.py                          | 231 ++++++++++
+ pipeline/import_phase3_fast.py                     | 229 ++++++++++
+ pipeline/import_phase4.py                          | 124 ++++++
+ pipeline/load_p0a.py                               | 112 +++++
+ pipeline/make_contest_demo.py                      |  74 ++++
+ pipeline/make_hist_tiles.py                        |  64 +++
+ pipeline/make_tiles_terrain.py                     |  43 ++
+ pipeline/phase5_bench.py                           | 129 ++++++
+ pipeline/render_tiles.py                           | 176 ++++++++
+ plugin/baodao_wenyu/__init__.py                    |   7 +
+ plugin/baodao_wenyu/metadata.txt                   |  18 +
+ plugin/baodao_wenyu/panels/__init__.py             |   0
+ plugin/baodao_wenyu/panels/analysis.py             | 115 +++++
+ plugin/baodao_wenyu/panels/browse.py               |  55 +++
+ plugin/baodao_wenyu/panels/compare.py              |  76 ++++
+ plugin/baodao_wenyu/panels/qa.py                   |  97 +++++
+ plugin/baodao_wenyu/plugin.py                      |  69 +++
+ scripts/install_plugin.bat                         |   7 +
+ scripts/qgis_capture.bat                           |   2 +
+ scripts/qgis_capture.py                            | 139 ++++++
+ scripts/qgis_smoke.bat                             |   2 +
+ scripts/qgis_smoke.py                              |  46 ++
+ scripts/start_services.bat                         |   7 +
+ server/rag_server.py                               | 479 +++++++++++++++++++++
+ server/serve_tiles.py                              |  24 ++
+ ...235\220\346\226\231\346\270\205\345\215\225.md" |  18 +
+ "\344\273\243\347\240\201/gen_docs.py"             | 401 +++++++++++++++++
+ ...35\345\262\233\346\226\207\350\210\206_v1.docx" | Bin 0 -> 1481552 bytes
+ 44 files changed, 3362 insertions(+)
