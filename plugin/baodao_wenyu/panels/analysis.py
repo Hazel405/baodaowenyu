@@ -78,7 +78,7 @@ class AnalysisDialog(QDialog):
             c, cur = self._cur()
             cur.execute("""SELECT z.unit_name, round(z.slope_mean::numeric,1), round(z.steep30_frac::numeric,3),
                                   round(z.stream_l2_frac::numeric,3), round(z.mobility_mean::numeric,1)
-                           FROM tw.dem_zonal_stats
+                           FROM tw.dem_zonal_stats AS z
                            WHERE unit_type<>'county' AND parent LIKE %s
                              AND (slope_mean > 25 OR stream_l2_frac > 0.05)
                            ORDER BY slope_mean DESC LIMIT 12""", (pfx + "%",))
