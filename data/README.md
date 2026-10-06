@@ -22,7 +22,7 @@
 | ports / airports / coastline | 752/22/885 | OSM | 港口码头、机场、海岸线 |
 | events | 15,295 | GDELT 1.0 | 新闻事件（月分区，双周采样口径，CAMEO 中文类目） |
 | ts_attention | 710 | GDELT DOC | 每日新闻关注度时序 |
-| dem_zonal_stats | 222 | SRTM 派生 | 县 21+乡镇 201 的坡度/流积/通行难度/最陡占比分区统计 |
+| dem_zonal_stats | 222 | SRTM 派生 | 县 21+乡镇 201 的坡度/流积/通行难度/最陡占比分区统计（連江縣未纳入 DEM 统计范围，故县计 21 而非 22） |
 | contours | 15,002 | SRTM 派生 | 1000m 级等高线 |
 | land_poly | 自产 | boundary∪admin_osm | 陆域合并面（底图渲染与空间过滤用） |
 | tw_demo_countypop / tw_demo_townpop | 22/204 | WorldPop 2020 | 县/乡镇人口（public 模式） |

@@ -455,7 +455,7 @@ def q_place(q, ents):
             out.append({"query": e, "name": r[1], "fcode": r[3], "所在县市": county_cn(r[4]),
                         "所在乡镇": r[5], "population": r[6], "elevation": r[7],
                         "lat": round(r[8], 3), "lon": round(r[9], 3), "zh": r[10]})
-        sources.append(f"tw.gaz_tw（GeoNames 45,572 条，中文别名 31,564）")
+        sources.append(f"tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）")
     return out, sources
 
 
