@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """build_demo_project.py — 生成"打开即惊艳"的演示工程 demo_project.qgz：
 街道/地形瓦片底图 + 县市人口分级设色 + 县市界 + 乡镇界 + 主要城市标注 + 高快速路网 + 2026 事件点。
-运行：scripts\\run_build_project.bat   产物：D:\\宝岛文舆\\demo_project.qgz + docs/figures/fig_demo_preview.png
+运行：scripts\\run_build_project.bat   产物：<项目根>\\demo_project.qgz + docs/figures/fig_demo_preview.png
 """
 import os
 if os.environ.get("DEMO_HEADLESS") == "1":      # 无头平台字体库为空，中文标注会变豆腐块，默认用 GUI 平台渲染
@@ -130,7 +130,8 @@ ms.setLayers([l for l in reversed(list(proj.mapLayers().values())) if l.id() != 
 ms.setDestinationCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
 ms.setExtent(QgsRectangle(119.3, 21.9, 122.5, 25.3))
 
-qgz = r"D:\宝岛文舆\demo_project.qgz"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根，免硬编码旧机路径（换机适配）
+qgz = os.path.join(ROOT, "demo_project.qgz")
 proj.write(qgz)
 print("saved", qgz)
 
@@ -139,6 +140,8 @@ ms.setOutputSize(QSize(1400, 1050))
 job = QgsMapRendererSequentialJob(ms)
 job.start(); job.waitForFinished()
 img = job.renderedImage()
-img.save(r"D:\宝岛文舆\docs\figures\fig_demo_preview.png")
+_figdir = os.path.join(ROOT, "docs", "figures")
+os.makedirs(_figdir, exist_ok=True)
+img.save(os.path.join(_figdir, "fig_demo_preview.png"))
 print("preview saved")
 app.exitQgis()

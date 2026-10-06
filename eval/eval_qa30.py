@@ -37,7 +37,8 @@ CASES = [
     ("2024年关注度水平如何？", "attention", [""]),
     ("最近关注度趋势怎样？", "attention", [""]),
     ("高雄市有多少人口，坐标在哪？", "population", [["2737", "278"], ["120"]]),
-    ("台中市和台北谁人口多？", "population", [["285", "300"], ["78", "235"]]),
+    # 台中为多口径条目：ADM2 行政区 2,867,848 / PPLA2 2,850,285 / demo(WorldPop) 3,007,731
+    ("台中市和台北谁人口多？", "population", [["285", "286", "300"], ["78", "235"]]),
     ("屏东县地形以什么为主？", "place", ["屏东"]),
     ("宜兰的港口数量？", "facility", [""]),
     ("2026年8月有外交合作类事件吗？", "event", [""]),
@@ -86,8 +87,10 @@ if __name__ == "__main__":
     out = {"date": str(datetime.date.today()), "mode": "bare" if bare else "rag",
            "n": len(rows), "acc": sum(1 for r in rows if r.get("ok")) / max(len(rows), 1),
            "rows": rows, "elapsed_s": round(time.time() - t0, 1)}
-    p = r"D:\宝岛文舆\eval\outputs"
-    import os; os.makedirs(p, exist_ok=True)
+    import os
+    # 相对脚本自身定位输出目录，避免硬编码旧机路径（换机适配）
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+    os.makedirs(p, exist_ok=True)
     fn = os.path.join(p, f"eval_qa30_{out['date']}{'_bare' if bare else ''}.json")
     json.dump(out, open(fn, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("saved", fn, "acc=", round(out["acc"], 3))
