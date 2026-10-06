@@ -505,10 +505,24 @@ def _tile_bounds(z, x, y):
 
 
 # props 为 MVT 携带的属性列；simplify=True 时按层级做 ST_Simplify；order 用于要素上限截断时保大头。
+# 说明：人口图层没有独立的多边形表——人口是挂在边界表上的属性。
+#   pop_county = tw.boundary(level=2) ⋈ public.tw_demo_countypop.n，22 个县市
+#   town       = tw.admin_osm(level=8) ⋈ public.tw_demo_townpop.name，204 个乡镇
+# 因此这两层用 `sql` 直接给完整子查询（其余字段仅作元数据），不依赖手工建的 tw.pop_county/tw.pop_town。
+_POP_COUNTY_SQL = (
+    "SELECT ST_Transform(b.geom,3857) AS g, c.cn AS name, c.pop AS pop "
+    "FROM tw.boundary b JOIN public.tw_demo_countypop c ON b.name = c.n "
+    "WHERE b.level = 2 AND b.geom IS NOT NULL"
+)
+_POP_TOWN_SQL = (
+    "SELECT ST_Transform(a.geom,3857) AS g, t.name AS name, t.pop AS pop "
+    "FROM tw.admin_osm a JOIN public.tw_demo_townpop t ON a.name = t.name "
+    "WHERE a.level = 8 AND a.geom IS NOT NULL"
+)
 MVT_LAYERS = {
-    "pop_county": dict(table="tw.pop_county", props=["county_cn AS name", "pop"], geom="geom",
+    "pop_county": dict(sql=_POP_COUNTY_SQL, props=["name", "pop"], geom="g",
                        kind="polygon", label="县市人口", minzoom=3, simplify=True, order="pop DESC", limit=64),
-    "town": dict(table="tw.pop_town", props=["town AS name", "pop"], geom="geom",
+    "town": dict(sql=_POP_TOWN_SQL, props=["name", "pop"], geom="g",
                  kind="polygon", label="乡镇人口", minzoom=7, simplify=True, order="pop DESC", limit=400),
     "county_line": dict(table="tw.boundary", props=["name"], geom="geom",
                         kind="polygon", label="县市界", minzoom=3, simplify=True, where="level=2", limit=64),
@@ -525,8 +539,12 @@ MVT_LAYERS = {
     "water_poly": dict(table="tw.osm_water_poly", props=["kind", "name"], geom="geom",
                        kind="polygon", label="湖库", minzoom=6, simplify=True, limit=1200,
                        where="kind IN ('reservoir','lake','water','riverbank')"),
-    "cities": dict(table="tw.cities_major", props=["name_zh AS name", "population AS pop"], geom="geom",
-                   kind="point", label="主要城市", minzoom=4, limit=64),
+    # 主要城市：原依赖手工表 tw.cities_major（不在 pipeline 生成范围内，换机恢复即缺）；
+    # 改从 gaz_tw 取人口最多的 20 个城镇（与 web/data/cities.geojson 快照口径一致，20 名后数量级断层）。
+    "cities": dict(table="tw.gaz_tw", props=["name", "population AS pop"], geom="geom",
+                   kind="point", label="主要城市", minzoom=4,
+                   order="population DESC NULLS LAST", limit=20,
+                   where="fclass='P' AND population IS NOT NULL"),
     "places": dict(table="tw.gaz_tw", props=["name", "population AS pop", "fclass AS kind"], geom="geom",
                    kind="point", label="聚落点", minzoom=9, order="population DESC NULLS LAST", limit=1500,
                    where="fclass='P'"),
@@ -565,9 +583,15 @@ def mvt(name: str, z: int, x: int, y: int):
     out_cols = ", ".join(p.split(" AS ")[-1].split()[0] for p in spec["props"])   # 内层已改名，外层只能引别名
     where = spec.get("where", "true")
     order = f'ORDER BY {spec["order"]}' if spec.get("order") else ""
-    inner = (f'SELECT ST_Transform({g},3857) AS g, {sel} FROM {spec["table"]} '
-             f'WHERE {where} AND ST_Intersects({g}, ST_MakeEnvelope({lon0},{lat0},{lon1},{lat1},4326)) '
-             f'{order} LIMIT {spec["limit"]}')
+    if spec.get("sql"):
+        # 已提供完整子查询（含 join 与 3857 变换，几何列名见 spec["geom"]），此处只做瓦片索引过滤
+        inner = (f'SELECT * FROM ({spec["sql"]}) src '
+                 f'WHERE ST_Intersects(ST_Transform(g,4326), '
+                 f'ST_MakeEnvelope({lon0},{lat0},{lon1},{lat1},4326)) {order} LIMIT {spec["limit"]}')
+    else:
+        inner = (f'SELECT ST_Transform({g},3857) AS g, {sel} FROM {spec["table"]} '
+                 f'WHERE {where} AND ST_Intersects({g}, ST_MakeEnvelope({lon0},{lat0},{lon1},{lat1},4326)) '
+                 f'{order} LIMIT {spec["limit"]}')
     simp = f'ST_Simplify(g,{tol})' if spec.get("simplify") and tol > 0 else 'g'
     # 外层只带属性列与裁剪后的 geom，避免中间几何列 g 混进 MVT 属性
     sql = (f"SELECT ST_AsMVT(m,'{name}',4096,'geom') FROM ("
@@ -683,11 +707,26 @@ if __name__ == "__main__":
     c = get_conn()
     c.autocommit = True
     cur = c.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS tw_demo_townpop AS
-        SELECT o.name, round(sum(COALESCE(g.population,0))::numeric, 0) AS pop
-        FROM tw.admin_osm o LEFT JOIN tw.gaz_tw g ON ST_Contains(o.geom, g.geom)
+    # 修正（10-07）：① 限定 g.fclass='P'——原 JOIN 无此限定，会把 fclass='A'/fcode='PCLI' 的
+    #   「Taiwan」国家级条目（population=23,451,837、坐标 121.0/24.0）计入埔里鎮，令该镇人口假高 2362 万；
+    #   ② 取 max 而非 sum——GeoNames 单个乡镇内可含多个市镇点，sum 会重复累加；
+    #   ③ DROP 后重建——原 IF NOT EXISTS 使修正口径在旧库上不生效。
+    cur.execute("DROP TABLE IF EXISTS tw_demo_townpop")
+    cur.execute("""CREATE TABLE tw_demo_townpop AS
+        SELECT o.name, COALESCE(max(g.population), 0)::numeric AS pop
+        FROM tw.admin_osm o LEFT JOIN tw.gaz_tw g
+          ON ST_Contains(o.geom, g.geom) AND g.fclass = 'P'
         WHERE o.level = 8 GROUP BY o.name""")
     cur.execute("CREATE INDEX IF NOT EXISTS tdp_name_ix ON tw_demo_townpop (name)")
+    # 同步修正 tw.pop_town 的 pop 值（QGIS 浏览面板与离线导出引用的历史手工表）：
+    # 与重建后的 tw_demo_townpop 对齐，避免沿用手工时期把 fclass='A' 国家级点计入的旧值。
+    cur.execute("""DO $$
+BEGIN
+  IF to_regclass('tw.pop_town') IS NOT NULL THEN
+    UPDATE tw.pop_town p SET pop = t.pop
+    FROM public.tw_demo_townpop t WHERE p.town = t.name;
+  END IF;
+END $$""")
     print("town pop table ready")
     def _warm():  # 启动即加载模型常驻，首问不再吃 7s 加载
         try:

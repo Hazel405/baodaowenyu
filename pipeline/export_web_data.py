@@ -14,7 +14,7 @@ import time
 
 import psycopg2
 
-ROOT = r"D:\宝岛文舆"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 自动定位项目根（本文件位于 pipeline/ 下），避免换机后路径失效
 OUT = os.path.join(ROOT, "web", "data")
 PG = dict(host="127.0.0.1", port=5433, dbname="tw", user="postgres")
 
