@@ -1,0 +1,11 @@
+# 二进制文件标注——避免 git 对二进制做文本 diff / 换行转换
+*.qgz binary
+*.dump binary
+*.tif binary
+*.tiff binary
+*.msi binary
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.wav binary
+*.db binary

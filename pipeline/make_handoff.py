@@ -22,7 +22,7 @@ OUT_ROOT = os.path.join(ROOT, "提交")
 
 EXCLUDE_DIRS_FLAT = {"__pycache__", ".idea", ".vscode", "提交", "demo_contest", "_pagecheck"}
 EXCLUDE_PATHS = ["docs/_internal", "pipeline/_internal", "data/raw", "data/derived", "data/export",
-                 "basemap/hillshade"]
+                 "basemap/hillshade", "eval/outputs"]
 EXCLUDE_PATTERNS = ["*.msi", "*.log", "*.tmp", "*.aux.xml", "~$*", "*.bak", "*_v2.docx"]
 # 目标：这些目录必须完整进包（源/目标文件数一致），用于自证"没漏代码"
 MUST_COMPLETE = ["plugin", "server", "web", "eval", "scripts", "docs", "submission", "tools", "pipeline"]
@@ -34,6 +34,15 @@ _redline = os.path.join(ROOT, "pipeline", "_internal", "redline_words.txt")
 if os.path.exists(_redline):
     with open(_redline, encoding="utf-8") as _f:
         BANNED += [_ln.strip() for _ln in _f if _ln.strip() and not _ln.startswith("#")]
+
+# 工程文件红线检查复用 scripts/check_redline.py（saveUser 身份泄漏 / 图层临时筛选），避免逻辑重复
+_redline_mod = None
+_cr_path = os.path.join(ROOT, "scripts", "check_redline.py")
+if os.path.exists(_cr_path):
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location("_check_redline", _cr_path)
+    _redline_mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_redline_mod)
 
 
 def relnorm(p):
@@ -126,6 +135,17 @@ def main():
     print(f"copied {len(copied)} files, {total/1024/1024:.1f} MB -> {dest}")
 
     bad = [p for p in copied if any(b.lower() in p.lower() for b in BANNED)]
+
+    # 工程文件红线自检：saveUser 必须中性、boundary 须为完整口径 level=2
+    # 打包是必经关口——发现即自动净化「包内副本」（不改工作区），净化后仍异常才判失败
+    qgz_in_pkg = os.path.join(dest, "demo_project.qgz")
+    if os.path.exists(qgz_in_pkg) and _redline_mod is not None:
+        ok_q, prob_q, fixed_q = _redline_mod.check_qgz(qgz_in_pkg, fix=True)
+        if fixed_q:
+            print("工程净化:", "；".join(fixed_q))
+        if not ok_q:
+            bad += ["qgz " + x for x in prob_q]
+
     print("红线自检:", "PASS" if not bad else f"FAIL {bad[:5]}")
     for d in MUST_COMPLETE:
         s, t = count_tree(ROOT, d), count_tree(dest, d)

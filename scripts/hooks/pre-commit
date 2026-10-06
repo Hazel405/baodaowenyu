@@ -1,0 +1,20 @@
+#!/bin/sh
+# 提交前红线自检（匿名评审）。
+# 若本次提交涉及工程文件 demo_project.qgz，先检查是否被 QGIS 写入了本机用户名、
+# 或留下了录制时的临时图层筛选；有问题则阻止提交，避免带身份信息的历史进公开仓库。
+REPO=$(git rev-parse --show-toplevel 2>/dev/null)
+[ -z "$REPO" ] && exit 0
+
+if git diff --cached --name-only | grep -q '^demo_project\.qgz$'; then
+  PY="C:/bdaopy/python.exe"
+  command -v "$PY" >/dev/null 2>&1 || PY="python"
+  "$PY" "$REPO/scripts/check_redline.py" --qgz "$REPO/demo_project.qgz" --text-only
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "==> 提交已拦截：工程文件含身份信息或临时筛选。"
+    echo "    修复： python scripts/check_redline.py --fix"
+    echo "    回滚： git restore demo_project.qgz"
+    exit 1
+  fi
+fi
+exit 0
