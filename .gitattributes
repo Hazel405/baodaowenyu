@@ -9,3 +9,8 @@
 *.mp4 binary
 *.wav binary
 *.db binary
+
+# 换行：hook 脚本必须 LF（否则 Git Bash 执行报 "\r: command not found"）；批处理用 CRLF
+scripts/hooks/* text eol=lf
+*.bat text eol=crlf
+*.sh  text eol=lf
