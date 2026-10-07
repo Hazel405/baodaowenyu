@@ -16,7 +16,7 @@ baodaowenyu/
 │   ├── rag_server.py         防幻觉 RAG API :8600（规则路由→PostGIS→qwen3:8b 仅组织语言）
 │   │                         ＋ /mvt 矢量瓦片、/api/layers、/api/locate（供网页查看端）
 │   └── serve_tiles.py        单端口 :8090 = 自产 XYZ 瓦片金字塔 + web\ 查看端
-├── pipeline\                 开源数据→PostGIS→瓦片 全链脚本（可一键重建，MIT）
+├── pipeline\                 开源数据→PostGIS→瓦片 全链脚本（可一键重建）
 │   ├── import_phase1.py import_boundary.py     地名/别名/边界入库
 │   ├── render_tiles.py                         街道图自渲（PostGIS→PIL，z0-13 20,854 张）
 │   ├── make_tiles_terrain.py                   地形层（gdaldem+gdal2tiles，z0-12 2,853 张）
@@ -55,7 +55,7 @@ baodaowenyu/
 | 坐标 | GCJ-02 加偏，与科学栅格叠加必错位 | WGS84/4326 统一，直接叠 70m DEM 派生分析 |
 | 时间 | 仅现势 | 清季/日治/1947/1998/当代多时点卷帘叠合 |
 | AI | 无地志问答 | 防幻觉 RAG：数字只来自 SQL 检索，LLM 仅组织语言，输出回溯校验 |
-| 开放 | 禁止抓取再分发 | 插件 GPL 开源、管线 MIT、区域模板可平移到其他研究对象 |
+| 开放 | 禁止抓取再分发 | 插件与管线均以 GPL-2.0-or-later 开源、区域模板可平移到其他研究对象 |
 
 ## 合规红线（已内置执行）
 

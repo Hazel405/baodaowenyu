@@ -12,7 +12,8 @@ https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
 Data assets carry their own licenses and are NOT covered by the above grant:
 - OpenStreetMap extracts/derived tables: ODbL (attribution © OpenStreetMap contributors)
-- GeoNames: CC-BY 3.0 | WorldPop: CC-BY 4.0 | SRTM/NGA charts: public domain
+- GeoNames: CC-BY 4.0 | WorldPop: CC-BY 4.0 | SRTM: public domain | NGA charts: public domain
+  (NGA digital charts are NOT included in this package; their licence is listed for reference)
 - GDELT: non-commercial research terms | Models (qwen3, bge-m3): Apache-2.0/MIT, weights
   fetched locally, never redistributed in this package.
 See docs/开源及第三方资源使用清单.md for the per-source obligation matrix.
