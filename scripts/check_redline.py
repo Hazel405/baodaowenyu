@@ -18,13 +18,18 @@ QGIS 保存工程时会把**本机系统用户名**写进 .qgz（saveUser 属性
   全仓文本
     B1 真名/身份线索（pipeline/_internal/identity_words.txt + 内置兜底）
     B2 红线词（pipeline/_internal/redline_words.txt，打包同源词表）
+  Office/PDF 元数据（文档属性里常被自动写入撰写者身份，肉眼不可见）
+    C1 docx/xlsx/pptx 的 docProps（core/app/custom）含个人邮箱或身份词
+    C2 同上文档属性中 creator / lastModifiedBy 等非空且非中性
+    C3 PDF 内嵌元数据（Info 字典 / XMP）含个人邮箱或身份词
 
 用法
 ----
   python scripts\\check_redline.py            # 只检查，输出报告；有 FAIL 时退出码 1
-  python scripts\\check_redline.py --fix      # 自动净化 qgz（saveUser 改中性；boundary sql 复位）
+  python scripts\\check_redline.py --fix      # 自动净化 qgz 与 Office 文档属性
   python scripts\\check_redline.py --qgz <路径>   # 指定待检工程文件（默认仓库根 demo_project.qgz）
   python scripts\\check_redline.py --quiet    # 仅打印一行结论（供打包脚本调用）
+  python scripts\\check_redline.py --no-meta  # 跳过 Office/PDF 元数据检查
 
 注：`pipeline/_internal/` 不入库，真名与红线词表放这里，避免词表本身出现在公开仓库。
 """
@@ -64,6 +69,16 @@ SKIP_DIRS = {".git", "__pycache__", ".idea", ".vscode", "node_modules", "提交"
              "_internal", "outputs"}
 # 本脚本自身内含词表常量定义，必然自命中，跳过
 SKIP_FILES = {os.path.abspath(__file__)}
+
+# ── Office / PDF 元数据 ──
+OFFICE_EXT = {".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm", ".dotx", ".xltx", ".potx"}
+OFFICE_PROP_FILES = ("docprops/core.xml", "docprops/app.xml", "docprops/custom.xml")
+# 需要清空的文档属性标签（保留标签结构，仅置空内容）
+OFFICE_CLEAR_TAGS = ["dc:creator", "cp:lastModifiedBy", "cp:lastPrinted", "dc:description",
+                     "cp:keywords", "cp:category", "Manager", "Company"]
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+# 允许出现的团队匿名邮箱域（团队自用，不构成身份泄露）
+EMAIL_ALLOW_DOMAIN = {"example.com", "example.org", "example.net"}
 
 
 def load_words(path, fallback):
@@ -179,6 +194,127 @@ def _rewrite_qgz(qgz_path, qgs_name, new_text):
             os.remove(tmp_path)
 
 
+# ────────────────────────── Office / PDF 元数据扫描 ──────────────────────────
+def _bad_emails(text, self_email_ok=True):
+    out = []
+    for m in EMAIL_RE.finditer(text):
+        full = m.group(0)
+        domain = full.split("@", 1)[1].lower()
+        if domain in EMAIL_ALLOW_DOMAIN:
+            continue
+        if full not in out:
+            out.append(full)
+    return out
+
+
+def check_office(path, fix=False):
+    """检查（可选净化）一个 Office 容器的文档属性。返回 (problems, fixed)。"""
+    rel = os.path.relpath(path, ROOT).replace("\\", "/")
+    problems, fixed = [], []
+    try:
+        with zipfile.ZipFile(path) as z:
+            names = {n.lower(): n for n in z.namelist()}
+            targets = [(n, names[n]) for n in OFFICE_PROP_FILES if n in names]
+            if not targets:
+                return problems, fixed
+            items = [(i, z.read(i.filename)) for i in z.infolist()]
+    except Exception as e:
+        return [f"C1 {rel} 无法解析（{e}）"], fixed
+
+    changed = False
+    for low, real in targets:
+        idx = [k for k, (i, _) in enumerate(items) if i.filename == real]
+        if not idx:
+            continue
+        k = idx[0]
+        txt = items[k][1].decode("utf-8", errors="ignore")
+
+        # C1 个人邮箱
+        for m in _bad_emails(txt):
+            if fix:
+                txt = txt.replace(m, "")
+                changed = True
+                fixed.append(f"{rel} 清除个人邮箱「{m}」（属性 {low}）")
+            else:
+                problems.append(f"C1 {rel} 文档属性含个人邮箱「{m}」（{low}，匿名评审高风险）")
+
+        # C2 身份词
+        for w in identity_words():
+            if w in txt:
+                problems.append(f"C2 {rel} 文档属性含身份线索「{w}」（{low}）")
+
+        # 中性性说明：非空 creator/lastModifiedBy 且非工具名 → 仅提示
+        for tag in ("dc:creator", "cp:lastModifiedBy"):
+            mm = re.search(r"<%s\b[^>]*>([^<]*)</%s>" % (re.escape(tag), re.escape(tag)), txt)
+            if mm and mm.group(1).strip() and mm.group(1).strip() not in ("python-docx", "python-pptx"):
+                if fix:
+                    pass  # 下面统一清空
+                else:
+                    problems.append(f"C2 {rel} 文档属性 {tag} 非空：「{mm.group(1).strip()}」"
+                                    f"（建议置空，避免残留撰写者线索）")
+        if fix:
+            before = txt
+            for tag in OFFICE_CLEAR_TAGS:
+                txt = re.sub(r"(<%s\b[^>]*>)[^<]*(</%s>)" % (re.escape(tag), re.escape(tag)),
+                             r"\1\2", txt)
+            if txt != before:
+                changed = True
+                items[k] = (items[k][0], txt.encode("utf-8"))
+                fixed.append(f"{rel} 清空文档属性（{low}）")
+
+    if fix and changed:
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=os.path.splitext(path)[1],
+                                            dir=os.path.dirname(path) or ".")
+        os.close(tmp_fd)
+        try:
+            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zo:
+                for info, data in items:
+                    zo.writestr(info, data)
+            shutil.move(tmp_path, path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    return problems, fixed
+
+
+def check_pdf(path):
+    """检查 PDF 内嵌元数据（Info 字典 / XMP）。返回 problems。"""
+    rel = os.path.relpath(path, ROOT).replace("\\", "/")
+    problems = []
+    try:
+        data = open(path, "rb").read()
+    except Exception as e:
+        return [f"C3 {rel} 无法读取（{e}）"]
+    text = data.decode("latin-1", errors="ignore")
+    for m in _bad_emails(text):
+        problems.append(f"C3 {rel} PDF 元数据含个人邮箱「{m}」（匿名评审高风险）")
+    for w in identity_words():
+        if (w.encode("utf-8") in data) or (w.encode("utf-16-be") in data):
+            problems.append(f"C3 {rel} PDF 元数据含身份线索「{w}」")
+    return problems
+
+
+def scan_meta(fix=False):
+    """遍历仓库内的 Office/PDF 文件，检查（可选净化）元数据。返回 (problems, fixed)。"""
+    problems, fixed = [], []
+    for dp, dns, fns in os.walk(ROOT):
+        dns[:] = [d for d in dns if d not in SKIP_DIRS]
+        for fn in fns:
+            ext = os.path.splitext(fn)[1].lower()
+            if ext not in OFFICE_EXT and ext != ".pdf":
+                continue
+            if fn.endswith(".bak"):
+                continue
+            p = os.path.join(dp, fn)
+            if ext in OFFICE_EXT:
+                pr, fx = check_office(p, fix=fix)
+            else:
+                pr, fx = check_pdf(p), []
+            problems += pr
+            fixed += fx
+    return problems, fixed
+
+
 # ────────────────────────── 全仓文本扫描 ──────────────────────────
 def scan_text():
     """扫描仓库文本文件中的身份线索与红线词。返回 problems 列表。"""
@@ -214,12 +350,15 @@ def main():
     ap.add_argument("--qgz", default=None, help="指定待检工程文件路径")
     ap.add_argument("--quiet", action="store_true", help="仅打印一行结论")
     ap.add_argument("--text-only", action="store_true", help="跳过全仓文本扫描（只查工程）")
+    ap.add_argument("--no-meta", action="store_true", help="跳过 Office/PDF 元数据检查")
     args = ap.parse_args()
 
     ok_qgz, prob_qgz, fixed = check_qgz(args.qgz, fix=args.fix, quiet=args.quiet)
     prob_txt = [] if args.text_only else scan_text()
+    prob_meta, fixed_meta = ([], []) if args.no_meta else scan_meta(fix=args.fix)
+    fixed = fixed + fixed_meta
 
-    all_problems = [p for p in (prob_qgz + prob_txt) if not p.startswith("[跳过]")]
+    all_problems = [p for p in (prob_qgz + prob_txt + prob_meta) if not p.startswith("[跳过]")]
     ok = not all_problems
 
     if args.quiet:
@@ -237,6 +376,8 @@ def main():
         print(" ", p)
     if len(prob_txt) > 30:
         print(f"  ... 另有 {len(prob_txt) - 30} 条文本命中")
+    for p in prob_meta:
+        print(" ", p)
     print("-" * 62)
     print("结论：", "PASS 无命中，可提交/打包" if ok else f"FAIL 共 {len(all_problems)} 条，需处理后重跑")
     return 0 if ok else 1
