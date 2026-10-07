@@ -69,7 +69,7 @@ class CompareDialog(QDialog):
         pid = self.combo.currentData()
         if not os.path.isdir(os.path.join(BASMAP_ROOT, "hist_" + pid)):
             QMessageBox.information(self, "尚缺图幅",
-                                    "该历史图尚未入库（扫描件摆渡中，见 docs/历史舆图获取清单.md）。\n"
+                                    "该历史图尚未入库（素材按权利状态登记入库后自动出现在底图列表）。\n"
                                     "可先用“览”工作台的街道图与地形晕渲两底图叠置，体验同一坐标系下的透明度卷帘机制。")
             return
         self.remove_hist()

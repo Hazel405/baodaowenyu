@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""make_handoff.py — 生成"接手包"：可交给同学继续开发的自包含项目快照。
+"""make_handoff.py — 生成"交付快照"：可完整交给他人继续开发的自包含项目包。
 
-用法：python pipeline\\make_handoff.py            （默认输出到 提交\\宝岛文舆-接手包-<日期>\\）
+用法：python pipeline\\make_handoff.py            （默认输出到 提交\\宝岛文舆-交付包-<日期>\\）
 产物：一份完整可跑的代码 + 数据库转储 + 自产瓦片 + .git 历史 + 部署说明，并打印打包清单与校验结果。
 
 刻意排除（既省体积也是分发口径）：
@@ -93,7 +93,7 @@ def force_rmtree(path):
 
 
 def main():
-    dest = os.path.join(OUT_ROOT, "宝岛文舆-接手包-" + time.strftime("%Y%m%d"))
+    dest = os.path.join(OUT_ROOT, "宝岛文舆-交付包-" + time.strftime("%Y%m%d"))
     if os.path.isdir(dest):
         force_rmtree(dest)
     os.makedirs(dest)
@@ -125,7 +125,7 @@ def main():
     except Exception:
         pass
     with open(os.path.join(dest, "打包清单.txt"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(f"宝岛文舆 接手包  生成时间 {time.strftime('%Y-%m-%d %H:%M:%S')}  git HEAD {sha}\n")
+        f.write(f"宝岛文舆 交付包  生成时间 {time.strftime('%Y-%m-%d %H:%M:%S')}  git HEAD {sha}\n")
         f.write(f"文件 {len(copied)} 个，合计 {total/1024/1024:.1f} MB\n\n")
         f.write("[刻意排除] 内部目录与本地配置；可重建大件（data/raw、data/derived、"
                 "basemap/hillshade 与 *.tif、scripts/*.msi）；运行垃圾（__pycache__、*.log、临时与锁文件）"

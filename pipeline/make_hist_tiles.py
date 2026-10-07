@@ -18,7 +18,7 @@ GDAL = os.path.join(sys.prefix, "Library", "bin", "gdal.exe")
 def load_registry():
     p = os.path.join(HIST, "registry.csv")
     if not os.path.exists(p):
-        print("缺少 registry.csv，参照 历史舆图获取清单.md 建立"); return []
+        print("缺少 registry.csv（历史舆图素材登记表）：请先建立登记表后重跑"); return []
     return list(csv.DictReader(open(p, encoding="utf-8")))
 
 def gcp_points(csvp):

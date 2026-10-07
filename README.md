@@ -4,10 +4,10 @@
 > 作品形态：**QGIS 插件（主体）** + 二次开发项目 + 数据/知识工具
 > 一句话：给开源 QGIS 补上"中国台湾省人文地理数据底座 + 防幻觉地志问答 + 历史舆图叠合"三件中文生态没有的事。
 
-## 目录结构（按参赛归档组织）
+## 目录结构（按开源归档组织）
 
 ```
-D:\宝岛文舆\
+baodaowenyu/
 ├── README.md / LICENSE
 ├── plugin\baodao_wenyu\      ★ 作品主体：QGIS 插件（览/询/较/析 四工作台，GPL-2.0-or-later）
 │   ├── metadata.txt plugin.py
@@ -16,14 +16,14 @@ D:\宝岛文舆\
 │   ├── rag_server.py         防幻觉 RAG API :8600（规则路由→PostGIS→qwen3:8b 仅组织语言）
 │   │                         ＋ /mvt 矢量瓦片、/api/layers、/api/locate（供网页查看端）
 │   └── serve_tiles.py        单端口 :8090 = 自产 XYZ 瓦片金字塔 + web\ 查看端
-├── pipeline\                 开源数据→PostGIS→瓦片 全链脚本（可一键重建）
+├── pipeline\                 开源数据→PostGIS→瓦片 全链脚本（可一键重建，MIT）
 │   ├── import_phase1.py import_boundary.py     地名/别名/边界入库
 │   ├── render_tiles.py                         街道图自渲（PostGIS→PIL，z0-13 20,854 张）
 │   ├── make_tiles_terrain.py                   地形层（gdaldem+gdal2tiles，z0-12 2,853 张）
-│   ├── make_hist_tiles.py                      历史舆图 GCP 纠正+切片
+│   ├── make_hist_tiles.py                      历史舆图 GCP 纠正＋切片
 │   ├── export_web_data.py                      网页离线快照 GeoJSON 导出（幂等）
 │   ├── build_web_tiles.py                      随包低层级瓦片打包
-│   └── make_handoff.py                         生成"接手包"快照（含红线自检与文件数校验）
+│   └── make_handoff.py                         生成可分发的交付快照（含合规自检与文件数校验）
 ├── basemap\                  自产瓦片金字塔 street/ terrain/ hillshade/ hist_*\
 ├── web\                      ★ 网页查看端（MapLibre，双模式：实时 MVT+问答 / 离线快照）
 │   ├── index.html app.js style.css README.md
@@ -31,14 +31,14 @@ D:\宝岛文舆\
 │   └── data\ tiles\          离线快照与低层级瓦片（由 pipeline 生成）
 ├── data\                     raw\ derived\ db\tw_20261001.dump\ + registry.csv + DATA_SOURCES.md
 ├── eval\                     30 题问答基准 + 300 条消歧评测 + 裸模型消融（eval_qa30.py）
-├── docs\                     部署说明（接手必读）、已知限制与改进项、演示分镜、试用量表、历史图摆渡清单
+├── docs\                     部署说明 · 已知限制与改进项 · 用户试用量表 · 开源及第三方资源使用清单
 ├── tools\                    技术报告生成（gen_docs.py 生成器 / build_docs.py 安全落盘）
 └── scripts\                  start_services.bat / start_web_demo.bat / install_plugin.bat 一键脚本
 ```
 
-## 快速开始（评审/答辩机）
+## 快速开始
 
-> 换机部署、数据库恢复、评测复跑、故障对照与红线，全部见 **`docs\部署说明.md`**（接手必读）。
+> 数据库恢复、评测复跑、故障对照与合规检查，全部见 **`docs\部署说明.md`**。
 
 1. **零门槛看效果**：双击 `scripts\start_web_demo.bat` → 浏览器打开 http://127.0.0.1:8090/
    （只起静态服务即为离线模式：随包快照 + 自渲瓦片，不需要 PG/Ollama）；
@@ -64,4 +64,4 @@ D:\宝岛文舆\
   离线快照由 `export_web_data.py` 只列民用要素表生成——非民用要素不进任何接口、快照与页面；
 - 地图表达按《地图管理条例》自查：台湾省为中国省级行政区域，金门马祖隶属标注，标准画法模板随插件发布；
 - 全部材料匿名：无校名/LOGO/指导教师信息；
-- AI 辅助开发披露与《开源及第三方资源使用清单》见 docs\ 与报告附录。
+- AI 辅助开发披露见 `submission/佐证/03_过程记录/AI辅助使用披露.md`；《开源及第三方资源使用清单》见 `docs/开源及第三方资源使用清单.md` 与报告附录。
