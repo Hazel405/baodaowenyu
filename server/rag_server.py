@@ -196,9 +196,21 @@ def county_cn(en):
 
 CN_STOP = {"多少", "人口", "哪里", "在哪", "介绍", "情况", "什么", "发生", "事件", "几个", "多少人口"}
 SPLIT_RE = re.compile(r"[ 的在个哪些哪什么有多少和与及或比了是对从至约规模量类请帮介绍查属名型单元]")
+# 县市名前缀（T2 修复）：用于「云林县三和在哪里？」这类"县名 + 地名"连写问句的剥离
+CNTY_RE = re.compile(r"[\u4e00-\u9fff]{2,3}(?:县|市)")
 def extract_entities(q):
     """从问题中提取候选实体：虚词切分 + 前缀扩展 + 停用词过滤 + 匹配库内已知名（优先）。"""
     cands = []
+    # 【T2 修复·合入队员 B（2026-10-07）】先剥掉「X县/X市」前缀再取尾词候选。
+    #   原前缀策略 q[:2]/q[:3] 在「云林县三和在哪里？」里前 3 字被"云林县"占满，
+    #   真正的地名「三和」进不了候选 → 只剩县名实体，检索到 ADM2 行政记录而答非所问。
+    #   此处仅**追加**候选（不删原有候选），因此不影响正常县名题（县域人口走 population
+    #   意图、不经此分支；place 题原有候选也全部保留）。
+    _stripped = CNTY_RE.sub("", q)   # 「云林县三和在哪里？」→「三和在哪里？」
+    if _stripped and _stripped != q:
+        for pre in (_stripped[:2], _stripped[:3]):
+            if re.fullmatch(r"[\u4e00-\u9fff]{2,3}", pre) and pre not in cands:
+                cands.append(pre)
     for pre in (q[:2], q[:3]):  # 问题前 2/3 字优先当实体（三和/和平/宜兰 等开头地名）
         if re.fullmatch(r"[\u4e00-\u9fff]{2,3}", pre) and pre not in cands:
             cands.append(pre)
