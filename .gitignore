@@ -16,6 +16,8 @@ scripts/probe*.py
 scripts/probe*.bat
 docs/_pagecheck/
 tools/_tmp_*.docx
+# Office 临时锁定文件（打开 docx/xlsx 时自动生成，含机器名，绝不入库）
+~$*
 
 # 本地配置与凭据（绝不入库）
 *.key
