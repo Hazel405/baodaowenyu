@@ -126,15 +126,24 @@ def check_qgz(qgz_path=None, fix=False, quiet=False):
 
     new_text = text
 
-    # A1 saveUser
+    # A1 saveUser / saveUserFull（QGIS 3.44+ 会另写 saveUserFull=本机账户全名，须一并净化）
     users = re.findall(r'saveUser="([^"]*)"', text)
     bad_users = [u for u in users if u not in SAVEUSER_OK]
-    if bad_users:
+    fulls = re.findall(r'saveUserFull="([^"]*)"', text)
+    bad_fulls = [u for u in fulls if u and u not in SAVEUSER_OK]
+    if bad_users or bad_fulls:
         if fix:
+            new_text = re.sub(r'saveUserFull="[^"]*"', f'saveUserFull="{SAVEUSER_FIX}"', new_text)
             new_text = re.sub(r'saveUser="[^"]*"', f'saveUser="{SAVEUSER_FIX}"', new_text)
-            fixed.append(f"saveUser {bad_users} → {SAVEUSER_FIX}")
+            if bad_fulls:
+                fixed.append(f"saveUserFull {bad_fulls} → {SAVEUSER_FIX}")
+            if bad_users:
+                fixed.append(f"saveUser {bad_users} → {SAVEUSER_FIX}")
         else:
-            problems.append(f"A1 工程内 saveUser 非中性值：{bad_users}（会暴露身份）")
+            if bad_users:
+                problems.append(f"A1 工程内 saveUser 非中性值：{bad_users}（会暴露身份）")
+            if bad_fulls:
+                problems.append(f"A1 工程内 saveUserFull 非中性值：{bad_fulls}（会暴露身份）")
 
     # A2 真名/身份线索
     for w in identity_words():
