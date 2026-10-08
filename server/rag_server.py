@@ -279,33 +279,122 @@ def time_scope(table, alias, col, yr, mo=None):
 def q_population(q, ents):
     cur = get_conn().cursor()
     out, sources = [], []
-    # 全岛总量口径
-    if not ents or any(k in q for k in ("全台", "全岛", "总量", "总计", "共")):
+    # 实体归一去重：简/繁同形实体（台中市/臺中市）会重复占用 out[:6] 名额，
+    # 把另一实体（台北）整体挤出 → 对比题只答一半。与 q_place 同款修复。
+    _dedup, _k = [], set()
+    for _e in ents:
+        _key = t2s(_e)
+        if _key in _k:
+            continue
+        _k.add(_key)
+        _dedup.append(_e)
+    ents = _dedup
+    # 全岛总量口径（含「台湾省」：省 1998 年已虚级化，现行无省级人口统计 → 以全台合计代表）
+    # 实体级判断：**仅当用户自己写明了「台湾省」**（问句含「台湾省/臺灣省」，或实体确切是
+    #   「台湾省」）才走「省级虚级化」口径说明；用户问「台湾人口」时并未提「省」，属正常
+    #   全台口径提问，**不得**主动科普省级区划沿革。两种问法都取官方全台合计，只是说明行不同；
+    #   并据此跳过该实体的 gaz 检索（避免 ADM1 历史台湾省 7,060,473 等污染口径）。
+    _province_q = ("台湾省" in q or "臺灣省" in q) or any(t2s(e) == "台湾省" for e in ents)
+    if not ents or any(k in q for k in ("全台", "全岛", "总量", "总计", "共")) or _province_q:
         cur.execute("SELECT sum(pop) FROM tw_demo_countypop")
         tot = cur.fetchone()[0]
         if tot:
-            out.append({"scope": "全台", "population_worldpop": int(tot), "source_year": 2020})
+            item = {"scope": "全台", "population_worldpop": int(tot), "source_year": 2020}
+            if _province_q:
+                item["说明"] = ("台湾省自1998年起已虚级化，现行无省级人口统计口径；上值为全台22县市"
+                                "合计（WorldPop 2020）。库内名称含『臺灣省』的条目属历史区划或旧别名"
+                                "（如臺北縣），不代表现行行政区人口，请勿采用其数字。")
+            out.append(item)
             sources.append("tw_demo_countypop 合计（WorldPop 2020）")
+    # ①-a 县辖市优先（tw_demo_townpop 精确名命中）：**仅当用户自己写明了『X市』后缀**时启用。
+    #    根因：countypop（县市表）里只有「花蓮縣」，乡镇表里才有「花蓮市」。原逻辑用
+    #    cn ILIKE '%花莲%' 模糊匹配 → 「花莲市」被抢答成花蓮縣的 292,578；正确值 199,037
+    #    在乡镇表，而乡镇表原先只在 out 为空时才查 → 该分支永远走不到。
+    #    安全性论证（已逐条核对库内数据，勿轻改）：
+    #      · 乡镇表 tw_demo_townpop 里以「市」结尾的全部 14 条**都是县辖市**
+    #        （彰化市/竹北市/員林市/南投市/斗六市/頭份市/花蓮市/屏東市/宜蘭市/臺東市/
+    #          苗栗市/太保市/馬公市/朴子市），**没有**一条是直辖市/省辖市；
+    #      · 乡镇表里没有任何「X县」「X区」形态条目。
+    #    因此「X市」在乡镇表精确命中 ⟹ X 必为县辖市，采用乡镇口径即正确；而全部直辖市
+    #    （台北/新北/桃园/台中/台南/高雄）与「X县」类问法在乡镇表无精确命中 → 零影响。
+    #    只对**带「市」后缀的写法**生效：用户写「花莲人口」（无后缀）时不启用，不改既有语义。
+    town_hit = {}
     for e in ents:
-        cur.execute("""SELECT g.name, g.fcode, g.population, cb.name, ST_Y(g.geom), ST_X(g.geom)
+        if not (e and e.endswith("市") and CNTY_RE.fullmatch(e)):
+            continue
+        cur.execute("SELECT name, pop FROM tw_demo_townpop WHERE name = %s OR name = %s LIMIT 1",
+                    (e, s2t(e)))
+        row = cur.fetchone()
+        if row:
+            town_hit[t2s(e)] = row
+    # ①-b 县市级官方口径（tw_demo_countypop，WorldPop 2020 行政区合计）：同一口径、可跨县市对比。
+    #    gaz 里同一县市混着三种口径——都会区 PPLC（台北 7,871,900，含台北+新北）／
+    #    市界 ADM2（台中 2,867,848）／城区点 PPLA2（台中 2,850,285）。若与官方口径混喂，
+    #    模型会挑都会区那条当「台北市」，跨县市对比直接得出反结论。
+    county_hit, county_geo = {}, {}
+    for e in ents:
+        # ①-a 已判定为县辖市的实体跳过县市表模糊匹配：否则「花莲市」仍会被
+        #   countypop 的 cn ILIKE '%花莲%' 抢答成花蓮縣（本次修复的核心）。
+        if t2s(e) in town_hit:
+            continue
+        cur.execute("SELECT n, pop FROM tw_demo_countypop WHERE n ILIKE %s OR cn ILIKE %s OR cn ILIKE %s OR cn ILIKE %s LIMIT 2",
+                    (f"%{e}%", f"%{e}%", f"%{e[:2]}%", f"%{s2t(e)[:2]}%"))
+        for n, pop in cur.fetchall():
+            county_hit[t2s(e)] = (n, pop)
+            out.append({"place": e, "county": n, "population_worldpop": pop,
+                        "口径": "县市行政区合计(WorldPop 2020)"})
+            sources.append("tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）")
+    # ①-c 县辖市行（乡镇表口径）：追加到县市行之后，口径行明确标注，供模型照抄。
+    for e in ents:
+        if t2s(e) not in town_hit:
+            continue
+        name, pop = town_hit[t2s(e)]
+        out.append({"place": e, "name": name, "township_pop": pop,
+                    "口径": "县辖市乡镇分区(WorldPop 2020)"})
+        sources.append("tw_demo_townpop 乡镇分区（WorldPop 2020）")
+    # ② gaz 明细：已是县市级的实体**只借坐标**（人口沿用官方口径，避免多口径串台）；
+    #    非县市级实体照常给多形态明细（PPLC/PPL 等）。
+    seen_pop = set()   # 同一 geonameid 经简/繁多别名 JOIN 会重复出行，去重保持证据干净
+    for e in ents:
+        # 「台湾省」类问法：省级历史/别名条目（ADM1 历史台湾省 7,060,473、ADM2 臺北縣旧别名
+        #   『臺灣省』4,004,367）会污染人口口径 → 跳过其实体检索，省级人口一律用上面的官方全台合计。
+        if _province_q and t2s(e) == "台湾省":
+            continue
+        cur.execute("""SELECT g.geonameid, g.name, g.fcode, g.population, cb.name, ST_Y(g.geom), ST_X(g.geom)
             FROM tw.gaz_alias a JOIN tw.gaz_tw g USING (geonameid)
             LEFT JOIN LATERAL (SELECT name FROM tw.boundary b
                                WHERE b.level=2 AND ST_Within(g.geom, b.geom) LIMIT 1) cb ON true
             WHERE a.alt = ANY(%s) AND g.population > 0
             ORDER BY g.population DESC LIMIT 4""", ([e, s2t(e)],))
         rows = cur.fetchall()
-        for name, fcode, pop, adm, la, lo in rows:
+        if t2s(e) in county_hit:
+            for gid, _n, _f, _p, _adm, la, lo in rows:
+                seen_pop.add(gid)
+                if t2s(e) not in county_geo:
+                    county_geo[t2s(e)] = (round(la, 3), round(lo, 3))
+            continue
+        for gid, name, fcode, pop, adm, la, lo in rows:
+            if gid in seen_pop:
+                continue
+            seen_pop.add(gid)
             out.append({"place": e, "name": name, "fcode": fcode, "population": pop,
+                        "口径": {"PPLC": "都会区(含邻县)", "ADM1": "行政区(GeoNames)",
+                                 "ADM2": "行政区(GeoNames)", "ADM2H": "历史区划(GeoNames)",
+                                 "PPLA2": "城区点(GeoNames)"}.get(fcode, "地点(GeoNames)"),
                         "所在县市": county_cn(adm), "lat": round(la, 3), "lon": round(lo, 3)})
             sources.append(f"tw.gaz_tw/geonames geonameid 检索（{e}）")
-    # 县市级：查演示人口表（WorldPop 分区）；实体或前缀双匹配（防简繁/后缀差异）
-    for e in ents:
-        cur.execute("SELECT n, pop FROM tw_demo_countypop WHERE n ILIKE %s OR cn ILIKE %s OR cn ILIKE %s OR cn ILIKE %s LIMIT 2",
-                    (f"%{e}%", f"%{e}%", f"%{e[:2]}%", f"%{s2t(e)[:2]}%"))
-        for n, pop in cur.fetchall():
-            out.append({"place": e, "county": n, "population_worldpop": pop})
-            sources.append("tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）")
-    out = out[:6]
+    # 县市行补坐标（人口仍用官方合计，坐标来自 gaz 同实体首个记录）
+    for it in out:
+        # 注意：全台汇总条（scope=全台）没有 place 字段，必须跳过，否则 KeyError 会
+        #        让 ask() 的兜底吞掉整批证据 → 答案退化成「查询结果为空」。
+        if it.get("place") and "population_worldpop" in it and "lat" not in it:
+            g = county_geo.get(t2s(it["place"]))
+            if g:
+                it["lat"], it["lon"] = g
+    # 多实体对比题（如「台中市和台北谁人口多」）给足名额：单实体 6 条足够，
+    #   多实体若仍砍到 6，第一个实体的 gaz 多形态行会占满，后面的实体与人口表行全被截掉
+    #   → 对比题只答一半。故按实体数放宽上限。
+    out = out[:6] if len(ents) <= 1 else out[:12]
     if not out:
         for e in ents:
             cur.execute("SELECT name, pop FROM tw_demo_townpop WHERE name ILIKE %s OR name ILIKE %s LIMIT 3",
@@ -313,6 +402,30 @@ def q_population(q, ents):
             for name, pop in cur.fetchall():
                 out.append({"place": e, "name": name, "township_pop": pop})
                 sources.append(f"WorldPop 2020 乡镇分区统计（{name}）")
+    if not out:
+        # 引导式空答（最后一级兜底）：县市/乡镇人口表都没有时，回查「同名地点有哪些」
+        #   （不过滤人口）。目的：把「库里有什么」如实告诉用户，空答从「查询结果为空」
+        #   升级为可引导的回答，同时绝不编造人口数。
+        # 注意：用户问「X人口」时并未声称 X 是县/市，故**不得**主动提及「无 X县/X市」——
+        #   只如实说明「X 在库内是村里/聚落级地名、无人口数」。县/市场前提的纠偏，仅当
+        #   用户**自己写明了**「X县 / X市」时，才由 premise_notes 针对该写法给出。
+        for e in ents:
+            cur.execute("""SELECT count(DISTINCT g.geonameid) FROM tw.gaz_alias a
+                JOIN tw.gaz_tw g USING (geonameid) WHERE a.alt = ANY(%s)""", ([e, s2t(e), t2s(e)],))
+            total = cur.fetchone()[0]
+            if not total:
+                continue
+            cur.execute("""SELECT DISTINCT g.geonameid, g.name, g.fcode, cb.name
+                FROM tw.gaz_alias a JOIN tw.gaz_tw g USING (geonameid)
+                LEFT JOIN LATERAL (SELECT name FROM tw.boundary b
+                                   WHERE b.level=2 AND ST_Within(g.geom, b.geom) LIMIT 1) cb ON true
+                WHERE a.alt = ANY(%s) ORDER BY 1 LIMIT 6""", ([e, s2t(e), t2s(e)],))
+            spots = [f"{county_cn(r[3]) or '台湾'}·{r[1]}({r[2]})" for r in cur.fetchall()]
+            out.append({
+                "说明": f"库内没有『{e}』的人口统计数据；『{e}』是村里/聚落级地名，"
+                        f"库内共{total}处、均无人口数，例如：{'、'.join(spots)}",
+                "数据状态": "无人口数据·有同名地点"})
+            sources.append("tw.gaz_tw（同名地点线索，人口字段未收录）")
     return out, sources
 
 
