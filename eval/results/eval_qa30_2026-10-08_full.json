@@ -1,0 +1,306 @@
+{
+ "date": "2026-10-08",
+ "mode": "rag30_full",
+ "rows": [
+  {
+   "q": "新北市有多少人口？",
+   "intent": "population",
+   "answer": "新北市的人口为440万4千39人。【来源：tw_demo_countypop】",
+   "sources": [
+    "tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.6
+  },
+  {
+   "q": "高雄市人口多少？",
+   "intent": "population",
+   "answer": "高雄市人口为278万0477人。【来源：tw_demo_countypop】",
+   "sources": [
+    "tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.0
+  },
+  {
+   "q": "台南市的人口是多少？",
+   "intent": "population",
+   "answer": "台南市的人口为1711085人。【来源：tw_demo_countypop】",
+   "sources": [
+    "tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.9
+  },
+  {
+   "q": "全台总人口约多少？",
+   "intent": "population",
+   "answer": "全台总人口约2406万。【来源：tw_demo_countypop 合计】",
+   "sources": [
+    "tw_demo_countypop 合计（WorldPop 2020）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.9
+  },
+  {
+   "q": "彰化县人口多少？",
+   "intent": "population",
+   "answer": "彰化县人口为125万5千7百85人。【来源：tw_demo_countypop】",
+   "sources": [
+    "tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.1
+  },
+  {
+   "q": "澎湖的人口规模？",
+   "intent": "population",
+   "answer": "澎湖的人口规模为85,186人。【来源：tw_demo_countypop】",
+   "sources": [
+    "tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.0
+  },
+  {
+   "q": "台北在1920年叫什么？",
+   "intent": "place",
+   "answer": "台北在1920年称为「台北市」。【来源：tw.gaz_tw】",
+   "sources": [
+    "tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.0
+  },
+  {
+   "q": "斗六地名有什么来历？",
+   "intent": "place",
+   "answer": "斗六地名在云林县的斗六市，坐标为23.709°N，120.543°E，人口107,924人；在台南市的斗六，坐标为23.148°N，120.47°E，人口0人。【来源：tw.gaz_tw】",
+   "sources": [
+    "tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 7.1
+  },
+  {
+   "q": "南投的别名有哪些？",
+   "intent": "place",
+   "answer": "南投的别名在查询结果中未提及。【来源：tw.gaz_tw】",
+   "sources": [
+    "tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.9
+  },
+  {
+   "q": "花莲属于哪个地形单元？",
+   "intent": "place",
+   "answer": "花莲属于花莲县花蓮市，位于北纬23.979度，东经121.611度。【来源：tw.gaz_tw】",
+   "sources": [
+    "tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 3.4
+  },
+  {
+   "q": "淡水河从哪里到哪里？",
+   "intent": "place",
+   "answer": "淡水河位于台北市，具体乡镇信息未提供。其坐标为纬度25.173，经度121.421。【来源：tw.gaz_tw】",
+   "sources": [
+    "tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 3.4
+  },
+  {
+   "q": "阿里山是什么类型地名？",
+   "intent": "place",
+   "answer": "阿里山是嘉义县阿里山鄉的乡级行政区，人口约500人，位于北纬23.515度、东经120.81度。【来源：tw.gaz_tw】",
+   "sources": [
+    "tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 3.9
+  },
+  {
+   "q": "台湾有多少个机场？",
+   "intent": "facility",
+   "answer": "台湾共有22个机场。【来源：tw.airports】",
+   "sources": [
+    "tw.airports（OSM Overpass，共 22 条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.2
+  },
+  {
+   "q": "台湾有多少港口或码头？",
+   "intent": "facility",
+   "answer": "台湾共有752个港口或码头。【来源：tw.ports】",
+   "sources": [
+    "tw.ports（OSM Overpass，共 752 条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.6
+  },
+  {
+   "q": "电力设施有多少处？",
+   "intent": "facility",
+   "answer": "电力设施共有1223处。【来源：tw.power】",
+   "sources": [
+    "tw.power（OSM Overpass，共 1223 条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.3
+  },
+  {
+   "q": "最大的电厂在哪个县市？",
+   "intent": "facility",
+   "answer": "查询结果未提供各电厂的装机容量数据，因此无法确定哪个县市的电厂最大。【来源：tw.power】",
+   "sources": [
+    "tw.power / tw.power_capacity（容量字段 OSM 缺失，诚实记档）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.5
+  },
+  {
+   "q": "铁路总段数是多少？",
+   "intent": "facility",
+   "answer": "铁路总段数为6571条。【来源：tw.rail】",
+   "sources": [
+    "tw.rail（OSM Overpass，共 6571 条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.9
+  },
+  {
+   "q": "乡镇级行政区有多少个面？",
+   "intent": "facility",
+   "answer": "乡镇级行政区共有204个面。【来源：tw.admin_osm】",
+   "sources": [
+    "tw.admin_osm（OSM admin_level=8）/ tw.boundary（县市面）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.8
+  },
+  {
+   "q": "2024年台湾发生了什么事件？",
+   "intent": "event",
+   "answer": "2024年台湾共发生3559起事件。其中，12月30日发生8起事件，12月23日发生48起事件，9月发生821起事件，10月发生1146起事件，11月发生612起事件，12月发生887起事件。【来源：tw.events】",
+   "sources": [
+    "tw.events（GDELT 1.0 双周采样，月分区表）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 7.4
+  },
+  {
+   "q": "最近一年抗议类事件有多少？",
+   "intent": "event",
+   "answer": "最近一年抗议类事件共有204条。【来源：tw.events】",
+   "sources": [
+    "tw.events（GDELT 1.0 双周采样，月分区表）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.7
+  },
+  {
+   "q": "2025年5月有哪些报道？",
+   "intent": "event",
+   "answer": "2025年5月共有532条报道。【来源：tw.events】",
+   "sources": [
+    "tw.events（GDELT 1.0 双周采样，月分区表）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.1
+  },
+  {
+   "q": "GDELT 收录台湾事件的时间范围？",
+   "intent": "event",
+   "answer": "GDELT收录台湾事件的时间范围为2015-03-20至2026-08-31，共15295条。【来源：tw.events】",
+   "sources": [
+    "tw.events（GDELT 1.0 双周采样，月分区表）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 4.5
+  },
+  {
+   "q": "新闻关注度峰值在哪天？",
+   "intent": "attention",
+   "answer": "新闻关注度峰值出现在2026年5月14日，数值为0.894。【来源：tw.ts_attention】",
+   "sources": [
+    "tw.ts_attention（GDELT DOC timeline，710 天每日）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.7
+  },
+  {
+   "q": "2024年关注度水平如何？",
+   "intent": "attention",
+   "answer": "2024年关注度整体呈波动趋势，最高值为0.4484（9月18日），最低值为0.1036（12月28日）。月均值分别为9月0.202、10月0.204、11月0.198、12月0.194。【来源：tw.ts_attention】",
+   "sources": [
+    "tw.ts_attention（GDELT DOC timeline，710 天每日）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 7.2
+  },
+  {
+   "q": "最近关注度趋势怎样？",
+   "intent": "attention",
+   "answer": "最近30天关注度呈现波动，8月24日达到0.2312，8月31日升至0.2958，9月1日略有下降至0.2799。【来源：tw.ts_attention】",
+   "sources": [
+    "tw.ts_attention（GDELT DOC timeline，710 天每日）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 4.6
+  },
+  {
+   "q": "高雄市有多少人口，坐标在哪？",
+   "intent": "population",
+   "answer": "高雄市人口为278万0477人，坐标位于北纬22.616度，东经120.313度。【来源：tw_demo_countypop】",
+   "sources": [
+    "tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 3.7
+  },
+  {
+   "q": "台中市和台北谁人口多？",
+   "intent": "population",
+   "answer": "台中市人口为3,007,731，台北人口为2,353,635，因此台中市人口更多。【来源：tw_demo_countypop】",
+   "sources": [
+    "tw_demo_countypop（GADM 边界 × WorldPop 2020 分区）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 3.5
+  },
+  {
+   "q": "屏东县地形以什么为主？",
+   "intent": "place",
+   "answer": "查询结果中未提供屏东县地形信息。【来源：tw.gaz_tw】",
+   "sources": [
+    "tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 1.7
+  },
+  {
+   "q": "宜兰的港口数量？",
+   "intent": "facility",
+   "answer": "宜兰境内共有12处港口/码头。【来源：tw.ports × tw.boundary 空间过滤】",
+   "sources": [
+    "tw.ports × tw.boundary 空间过滤（宜蘭）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.5
+  },
+  {
+   "q": "2026年8月有外交合作类事件吗？",
+   "intent": "event",
+   "answer": "2026年8月有外交合作类事件，共23起。【来源：tw.events】",
+   "sources": [
+    "tw.events（GDELT 1.0 双周采样，月分区表）",
+    "qwen3:8b 本地生成（Ollama）"
+   ],
+   "elapsed": 2.4
+  }
+ ]
+}
