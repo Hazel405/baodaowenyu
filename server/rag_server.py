@@ -618,8 +618,12 @@ def q_place(q, ents):
                 continue
             seen.add(r[0])
             out.append({"query": e, "name": r[1], "fcode": r[3], "所在县市": county_cn(r[4]),
-                        "所在乡镇": r[5], "population": r[6], "elevation": r[7],
+                        "所在乡镇": r[5], "elevation": r[7],
                         "lat": round(r[8], 3), "lon": round(r[9], 3), "zh": r[10]})
+        # 10-09 口径收口：地名分支不再携带 gaz_tw.population（同一县市混 PPLC 都会区/
+        # ADM2 市界/PPLA2 城区点三种口径，如「臺北縣」答 4,004,367 会与人口图层
+        # WorldPop 4,404,039 冲突）。人口问题一律由 q_population 按 WorldPop 口径回答，
+        # 地名题只答位置与沿革，不报人口。
         sources.append(f"tw.gaz_tw（GeoNames 45,572 条，中文别名约 3.2 万条）")
     return out, sources
 
