@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>宝岛文舆 · 开源 GIS 地志智询系统 — 网页查看端</title>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=20261010">
 </head>
 <body>
 <header>
@@ -50,7 +50,12 @@
   <div id="map"><div id="spin" class="spin">正在加载底图与图层…</div></div>
 
   <aside id="right">
-    <h2>地志智询</h2>
+    <div class="tabs">
+      <button class="tab on" data-pane="paneQa">地志智询</button>
+      <button class="tab" data-pane="paneHz">地形与灾害</button>
+    </div>
+
+    <div id="paneQa" class="pane on">
     <p class="sub">答案中的每个数字都来自 PostGIS 检索结果，大模型只组织语言；可一键在地图上定位。</p>
     <div class="qa">
       <input id="q" type="text" placeholder="例：宜兰有多少港口？" autocomplete="off">
@@ -60,6 +65,19 @@
     <div id="status" class="status"></div>
     <div id="answer"><p class="placeholder">提问后，答案与来源会显示在这里，并在地图上落点。</p></div>
     <div id="locate" class="locate" hidden></div>
+    </div>
+
+    <div id="paneHz" class="pane">
+      <p class="sub">70m SRTM（空洞修补）派生层分区统计 · 与 QGIS 插件「析」工作台同源同口径</p>
+      <div class="hzrow">
+        <select id="hzUnit"></select>
+        <button id="hzGo">分区统计</button>
+        <button id="hzSc" class="ghost">暴雨情景</button>
+        <button id="hzLo" class="ghost">定位</button>
+      </div>
+      <div id="hzOut" class="hzout"><p class="placeholder">选择县市后执行分区统计或暴雨情景分析。</p></div>
+      <p class="sub hznote">口径：清单为参考口径而非结论；高程样本未覆盖的乡镇如实标注缺口，不作推测、不作填补。</p>
+    </div>
   </aside>
 </main>
 
@@ -72,6 +90,6 @@
 </footer>
 
 <script src="vendor/maplibre-gl.js"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=20261010"></script>
 </body>
 </html>

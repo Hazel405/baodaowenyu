@@ -828,6 +828,88 @@ def api_locate(body: Locate):
     return {"points": pts}
 
 
+# ───────────────────────── 析 · 地形与灾害参考（网页端工作台，2026-10-09 新增）
+# 与 QGIS 插件「析」面板同源同口径：tw.dem_zonal_stats（70m SRTM 空洞修补派生层）。
+# 覆盖口径：21 个县市单元（連江縣无 SRTM 抽样）+ 其下挂 parent 的乡镇单元。
+# 演示纪律：只统计 parent 非空的乡镇（即挂在本县市名下的单元），县市外单元不入结果；
+#   覆盖缺口如实呈现，不作推测、不作填补——「如实标注缺口」本身是本工作台的展示点。
+class Hazard(BaseModel):
+    unit: str = ""
+
+
+@app.get("/api/hazard/units")
+def hazard_units():
+    """可查询的县市单元（繁中名 + 边界质心，供前端联动定位）。"""
+    cur = get_conn().cursor()
+    cur.execute("SELECT DISTINCT unit_name FROM tw.dem_zonal_stats"
+                " WHERE unit_type='county' ORDER BY 1")
+    units = [r[0] for r in cur.fetchall()]
+    name2en = {s2t(v): k for k, v in EN2CN.items()}
+    cent = {}
+    try:
+        cur.execute("SELECT name, round(ST_Y(ST_PointOnSurface(geom))::numeric,4),"
+                    " round(ST_X(ST_PointOnSurface(geom))::numeric,4)"
+                    " FROM tw.boundary WHERE level=2")
+        byen = {r[0]: (float(r[1]), float(r[2])) for r in cur.fetchall()}
+        for u in units:
+            p = byen.get(name2en.get(u, ""))
+            if p:
+                cent[u] = {"lat": p[0], "lon": p[1]}
+    except Exception:
+        pass
+    return {"units": [{"name": u, "lat": cent.get(u, {}).get("lat"),
+                       "lon": cent.get(u, {}).get("lon")} for u in units],
+            "covered_counties": len(units), "total_counties": 22,
+            "note": "高程分区统计覆盖 21 个县市单元；連江縣无 SRTM 抽样，如实记档，不作填补。"}
+
+
+@app.post("/api/hazard")
+def api_hazard(body: Hazard):
+    """选定县市 → 高程分区统计 + 暴雨情景受影响乡镇参考清单（覆盖缺口如实标注）。"""
+    raw = (body.unit or "").strip()
+    if not raw:
+        return {"error": "未指定县市"}
+    cur = get_conn().cursor()
+    cur.execute("SELECT DISTINCT unit_name FROM tw.dem_zonal_stats WHERE unit_type='county'")
+    counties = [r[0] for r in cur.fetchall()]
+    cands = {raw[:2], s2t(raw[:2]), t2s(raw[:2])}          # 简繁双向匹配，用户输入「台北」也要命中「臺北市」
+    unit = next((c for c in counties if c[:2] in cands), None)
+    if not unit:
+        return {"error": f"未收录「{raw}」", "covered_counties": len(counties),
+                "note": "高程分区统计覆盖 21 个县市单元（連江縣无 SRTM 抽样）"}
+    pfx = unit[:2]
+    cur.execute("""SELECT unit_type, count(*), round(avg(slope_mean)::numeric,1),
+                          round(avg(mobility_mean)::numeric,1), round(max(elev_max)::numeric,0),
+                          round(max(area_km2)::numeric,1)
+                   FROM tw.dem_zonal_stats
+                   WHERE (unit_type='county' AND unit_name LIKE %s)
+                      OR (unit_type<>'county' AND parent LIKE %s)
+                   GROUP BY unit_type ORDER BY unit_type""", (pfx + "%", pfx + "%"))
+    zonal = [{"level": "县级" if r[0] == "county" else "乡镇级", "units": r[1],
+              "slope_mean": float(r[2]) if r[2] is not None else None,
+              "mobility": float(r[3]) if r[3] is not None else None,
+              "elev_max": float(r[4]) if r[4] is not None else None,
+              "area_km2": float(r[5]) if r[5] is not None else None} for r in cur.fetchall()]
+    cur.execute("""SELECT z.unit_name, round(z.slope_mean::numeric,1),
+                          round(z.steep30_frac::numeric,3), round(z.stream_l2_frac::numeric,3),
+                          round(z.mobility_mean::numeric,1)
+                   FROM tw.dem_zonal_stats AS z
+                   WHERE unit_type<>'county' AND parent LIKE %s
+                     AND (slope_mean > 25 OR stream_l2_frac > 0.05)
+                   ORDER BY slope_mean DESC LIMIT 12""", (pfx + "%",))
+    scenario = [{"name": r[0], "slope_mean": float(r[1]) if r[1] is not None else None,
+                 "steep30_frac": float(r[2]) if r[2] is not None else None,
+                 "stream_l2_frac": float(r[3]) if r[3] is not None else None,
+                 "mobility": float(r[4]) if r[4] is not None else None} for r in cur.fetchall()]
+    cur.execute("SELECT count(*) FROM tw.dem_zonal_stats"
+                " WHERE unit_type<>'county' AND parent LIKE %s", (pfx + "%",))
+    covered = cur.fetchone()[0]
+    return {"unit": unit, "zonal": zonal, "scenario": scenario, "covered_towns": covered,
+            "trigger": "平均坡度 > 25° 或 二级河道占比 > 5%",
+            "note": "70m SRTM（空洞修补）派生层分区统计；清单为参考口径，非结论；"
+                    "未覆盖单元不作推测、不作填补。"}
+
+
 @app.post("/api/ask")
 def ask(body: Ask):
     t0 = time.time()

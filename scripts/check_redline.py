@@ -52,8 +52,9 @@ _INTERNAL = os.path.join(ROOT, "pipeline", "_internal")
 SAVEUSER_OK = {"", "sirh", "team", "baodao-team", "baodaowenyu", "anonymous", "user"}
 SAVEUSER_FIX = "baodao-team"
 
-# 内置兜底真名/身份线索（另从 identity_words.txt 追加）
-IDENTITY_BUILTIN = ["黄贺宗", "黃賀宗"]
+# 内置兜底真名/身份线索（另从 pipeline/_internal/identity_words.txt 追加）
+# 注意：本仓库公开，真名一律不入库——身份词只维护在本地 pipeline/_internal/identity_words.txt
+IDENTITY_BUILTIN = []
 # 内置兜底红线词（另从 redline_words.txt 追加）
 REDLINE_BUILTIN = ["兵要", "軍事設施", "军事设施", "军事要素", "軍事要素"]
 

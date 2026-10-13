@@ -32,3 +32,7 @@ pipeline/_internal/
 submission/
 提交/
 打包清单.txt
+
+# 本地备份文件（含旧版实现快照，不入库）
+*.bak
+*.bak_*

@@ -141,6 +141,7 @@ async function boot() {
   buildTimeline();
   bindUI();
   await fillSrcNote();
+  initHazard();
   window.BW = { map: () => map, setup: setupLayers, ask, locate, LAYERS, mode: () => MODE };  // 调试/自动化句柄
 }
 
@@ -405,6 +406,90 @@ async function localSearch(q) {
   });
   if (!bnds.isEmpty()) map.fitBounds(bnds, { padding: 90, maxZoom: 11, duration: 900 });
   setStatus('');
+}
+
+/* ───────── 析 · 地形与灾害参考（与 QGIS 插件「析」同源同口径）─────────
+ * 数据：tw.dem_zonal_stats（70m SRTM 空洞修补派生层），县 21 单元 + 乡镇单元 201。
+ * 纪律：清单为参考口径而非结论；未覆盖单元如实标注缺口，不作推测、不作填补。 */
+let HZ_META = null;
+
+function switchPane(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.pane === id));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === id));
+}
+
+async function initHazard() {
+  document.querySelectorAll('.tab').forEach(t =>
+    t.addEventListener('click', () => switchPane(t.dataset.pane)));
+  const out = document.getElementById('hzOut');
+  if (MODE !== 'live') {
+    out.innerHTML = '<p class="placeholder">该工作台需实时模式：请先启动 server/rag_server.py（:8600）。</p>';
+    return;
+  }
+  try {
+    const r = await fetchT(API + '/api/hazard/units', {}, 15000);
+    HZ_META = await r.json();
+    const sel = document.getElementById('hzUnit');
+    HZ_META.units.forEach(u => {
+      const o = document.createElement('option');
+      o.value = u.name; o.textContent = u.name;
+      sel.appendChild(o);
+    });
+    const nt = HZ_META.units.find(u => u.name.indexOf('南投') === 0);
+    if (nt) sel.value = nt.name;
+  } catch (e) {
+    out.innerHTML = '<p class="placeholder">县市清单读取失败：' + String(e.message || e).slice(0, 60) + '</p>';
+    return;
+  }
+  document.getElementById('hzGo').addEventListener('click', () => hzQuery('zonal'));
+  document.getElementById('hzSc').addEventListener('click', () => hzQuery('scenario'));
+  document.getElementById('hzLo').addEventListener('click', hzLocate);
+}
+
+async function hzQuery(kind) {
+  const unit = document.getElementById('hzUnit').value;
+  const out = document.getElementById('hzOut');
+  out.innerHTML = '<p class="placeholder">查询中…</p>';
+  try {
+    const r = await fetchT(API + '/api/hazard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unit })
+    }, 30000);
+    const d = await r.json();
+    if (d.error) { out.innerHTML = '<p class="placeholder">' + d.error + '</p>'; return; }
+    window.__HZ = d;
+    out.innerHTML = kind === 'zonal' ? hzZonalHtml(d) : hzScenarioHtml(d);
+  } catch (e) {
+    out.innerHTML = '<p class="placeholder">查询失败：' + String(e.message || e).slice(0, 80) + '</p>';
+  }
+}
+
+function hzZonalHtml(d) {
+  const rows = d.zonal.map(z =>
+    `<tr><td>${z.level}</td><td>${z.units}</td><td>${z.slope_mean == null ? '—' : z.slope_mean}</td>` +
+    `<td>${z.mobility == null ? '—' : z.mobility}</td><td>${z.elev_max == null ? '—' : z.elev_max}</td></tr>`).join('');
+  return `<div class="card"><div class="tags"><span class="tag">${d.unit}</span><span class="tag">高程分区统计</span></div>` +
+    `<table class="hz"><tr><th>层级</th><th>单元数</th><th>平均坡度°</th><th>通行难度</th><th>最高点 m</th></tr>${rows}</table>` +
+    `<div class="src">来源：tw.dem_zonal_stats｜本县市覆盖 ${d.covered_towns} 个乡镇单元；未覆盖单元如实标注于数据缺口，不作推测、不作填补。</div></div>`;
+}
+
+function hzScenarioHtml(d) {
+  const head = `<div class="tags"><span class="tag">${d.unit}</span><span class="tag">暴雨情景</span></div>`;
+  if (!d.scenario.length) {
+    return `<div class="card">${head}<div class="txt">${d.unit}内乡镇均未命中高风险条件（${d.trigger}）。</div></div>`;
+  }
+  const rows = d.scenario.map(x =>
+    `<tr><td>${x.name}</td><td>${x.slope_mean}</td><td>${(x.steep30_frac * 100).toFixed(1)}%</td>` +
+    `<td>${(x.stream_l2_frac * 100).toFixed(1)}%</td><td>${x.mobility}</td></tr>`).join('');
+  return `<div class="card">${head}<table class="hz"><tr><th>乡镇</th><th>平均坡度°</th><th>&gt;30°坡</th><th>二级河道</th><th>通行难度</th></tr>${rows}</table>` +
+    `<div class="src">触发条件：${d.trigger}｜来源：tw.dem_zonal_stats｜清单为参考口径，非结论。</div></div>`;
+}
+
+function hzLocate() {
+  const unit = document.getElementById('hzUnit').value;
+  const u = HZ_META && HZ_META.units.find(x => x.name === unit);
+  if (!u || u.lat == null) return;
+  map.flyTo({ center: [u.lon, u.lat], zoom: 9, duration: 900 });
 }
 
 boot();
