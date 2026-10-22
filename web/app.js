@@ -3,7 +3,9 @@
  *   live    —— 探测到 :8600 RAG 服务时，矢量瓦片走 /mvt/{layer}/{z}/{x}/{y}.pbf 直读 PostGIS，
  *              问答走 /api/ask（防幻觉链路），实体定位走 /api/locate；
  *   offline —— 探测不到服务时，退回随包 GeoJSON 快照 + 随包低层级瓦片，问答框改为本地地名检索。
- * 与 QGIS 插件共用同一套 PostGIS 库、同一瓦片金字塔、同一问答服务；本页不引入任何第三方在线瓦片。
+ * 与 QGIS 插件共用同一套 PostGIS 库、同一瓦片金字塔、同一问答服务。
+ * 底图：默认使用本项目自渲瓦片（可离线）；另提供 Esri World Imagery / World Street Map
+ *       两个"在线"选项，仅作高分影像对照，在线引用不落盘、不缓存分发，署名见页脚。
  * 注：中文注记用 DOM Marker 而非 style 的 symbol 层，避免依赖 glyphs 字体 PBF 服务，保证完全离线。
  */
 'use strict';
@@ -109,10 +111,83 @@ function layerObj(L) {
 }
 
 /* ───────── 底图 ───────── */
+/* 在线对照底图：Esri 公开 XYZ（ArcGIS Online 免 Key 直连，瓦片行列序为 {z}/{y}/{x}，勿写成 {z}/{x}/{y}）
+ * 许可口径：仅在线调用显示，不落盘、不做本地缓存分发；署名写入页脚 #bmSrc 与报告《第三方资源使用清单》。 */
+const LOCAL_NOTE = '底图：本项目自渲 XYZ 瓦片（数据源 GeoNames / © OpenStreetMap contributors (ODbL) / WorldPop / GDELT / NASA SRTM，均按各自许可署名）';
+const ESRI = {
+  satellite: {
+    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+    note: '底图：Esri World Imagery 在线卫星影像（Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community），在线引用、不落盘分发',
+  },
+  esristreet: {
+    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
+    note: '底图：Esri World Street Map 在线街道图（© Esri, HERE, Garmin, USGS, METI, Esri China (Hong Kong), © OpenStreetMap contributors），在线引用、不落盘分发',
+  },
+};
+
 function basemapTiles(kind) {
+  if (ESRI[kind]) return ESRI[kind].tiles;               // 在线对照底图：与全量瓦片开关无关
   const useFull = MODE === 'live' && document.getElementById('fullTiles').checked;
   const host = useFull ? TILE_HOST + '/' : '';
   return [`${host}${kind}/{z}/{x}/{y}.png`];
+}
+
+/* 卫星/影像底图下压低面状图层不透明度，避免色块遮死影像；切回自产底图时还原原始值 */
+const FILL_BASE = new Map();
+function dimFills(on) {
+  for (const L of LAYERS) {
+    if (L.geom !== 'fill' || !map.getLayer(L.id)) continue;
+    if (!FILL_BASE.has(L.id)) {
+      const o = map.getPaintProperty(L.id, 'fill-opacity');
+      FILL_BASE.set(L.id, typeof o === 'number' ? o : 0.7);
+    }
+    const base = FILL_BASE.get(L.id);
+    map.setPaintProperty(L.id, 'fill-opacity', on ? base * 0.45 : base);
+  }
+}
+
+function applyBasemap(v) {
+  const sel = document.getElementById('basemap');
+  if (sel && sel.value !== v) sel.value = v;              // 编程切换（自动化/调试）时同步显示
+  const noteEl = document.getElementById('bmSrc');
+  if (v === 'none') {
+    map.setLayoutProperty('basemap', 'visibility', 'none');
+    if (noteEl) noteEl.textContent = '底图：已关闭（仅显示业务图层）';
+    dimFills(false);
+    return;
+  }
+  map.setLayoutProperty('basemap', 'visibility', 'visible');
+  map.getSource('basemap').setTiles(basemapTiles(v));
+  if (noteEl) noteEl.textContent = ESRI[v] ? ESRI[v].note : LOCAL_NOTE;
+  dimFills(!!ESRI[v]);
+}
+
+/* 在线底图可达性探测：用 <img> 而非 fetch（瓦片服务无 CORS 头，fetch 会误判不可达） */
+function probeEsri(ms) {
+  const url = ESRI.satellite.tiles[0].replace('{z}', '3').replace('{y}', '3').replace('{x}', '6');
+  return new Promise(resolve => {
+    const img = new Image();
+    let done = false;
+    const fin = ok => { if (done) return; done = true; clearTimeout(t); resolve(ok); };
+    const t = setTimeout(() => fin(false), ms || 3500);
+    img.onload = () => fin(img.naturalWidth > 0);
+    img.onerror = () => fin(false);
+    img.src = url;
+  });
+}
+
+/* 网络不可达时禁用两个在线选项并改文案，避免答辩现场切到空白瓦片 */
+async function gateOnlineBasemaps() {
+  const sel = document.getElementById('basemap');
+  const ok = await probeEsri(3500);
+  if (ok) return;
+  for (const v of Object.keys(ESRI)) {
+    const o = sel.querySelector(`option[value="${v}"]`);
+    if (!o) continue;
+    o.disabled = true;
+    o.textContent = o.textContent.replace('在线', '当前网络不可达');
+  }
+  sel.title = '在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
 }
 
 /* ───────── 初始化 ───────── */
@@ -131,7 +206,7 @@ async function boot() {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 110, unit: 'metric' }), 'bottom-left');
   map.addControl(new maplibregl.AttributionControl({
-    customAttribution: '自渲瓦片 · GeoNames/OSM(ODbL)/WorldPop/GDELT/SRTM · MapLibre GL JS',
+    customAttribution: '自渲瓦片 · GeoNames/OSM(ODbL)/WorldPop/GDELT/SRTM · 在线对照底图 © Esri · MapLibre GL JS',
   }), 'bottom-right');
 
   map.on('load', () => setupLayers());
@@ -140,9 +215,10 @@ async function boot() {
   buildLegend();
   buildTimeline();
   bindUI();
+  gateOnlineBasemaps();
   await fillSrcNote();
   initHazard();
-  window.BW = { map: () => map, setup: setupLayers, ask, locate, LAYERS, mode: () => MODE };  // 调试/自动化句柄
+  window.BW = { map: () => map, setup: setupLayers, ask, locate, LAYERS, mode: () => MODE, basemap: applyBasemap };  // 调试/自动化句柄
 }
 
 let SETUP = false;
@@ -275,14 +351,9 @@ const EXAMPLES = ['宜兰有多少港口？', '新北市人口多少？', '玉�
   '台东县的关注度趋势', '彰化这个名字因何而来？'];
 function bindUI() {
   const sel = document.getElementById('basemap');
-  sel.addEventListener('change', () => {
-    const v = sel.value;
-    if (v === 'none') { map.setLayoutProperty('basemap', 'visibility', 'none'); return; }
-    map.setLayoutProperty('basemap', 'visibility', 'visible');
-    map.getSource('basemap').setTiles(basemapTiles(v));
-  });
+  sel.addEventListener('change', () => applyBasemap(sel.value));
   document.getElementById('fullTiles').addEventListener('change', () => {
-    const v = sel.value; if (v !== 'none') map.getSource('basemap').setTiles(basemapTiles(v));
+    const v = sel.value; if (v !== 'none') applyBasemap(v);   // ESRI 源不受全量瓦片开关影响
   });
   document.getElementById('resetView').addEventListener('click', () => map.flyTo({ center: ISLAND.center, zoom: ISLAND.zoom }));
 

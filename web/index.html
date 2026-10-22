@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>宝岛文舆 · 开源 GIS 地志智询系统 — 网页查看端</title>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=20261010">
+<link rel="stylesheet" href="style.css?v=20261022">
 </head>
 <body>
 <header>
@@ -22,6 +22,8 @@
       <select id="basemap">
         <option value="terrain">地形晕渲（自产）</option>
         <option value="street">街道图（自产）</option>
+        <option value="satellite">卫星影像（Esri，在线）</option>
+        <option value="esristreet">街道图（Esri，在线）</option>
         <option value="none">无底图</option>
       </select>
     </label>
@@ -82,7 +84,7 @@
 </main>
 
 <footer id="attrib">
-  <span>底图：本项目自渲 XYZ 瓦片（数据源 GeoNames / © OpenStreetMap contributors (ODbL) / WorldPop / GDELT / NASA SRTM，均按各自许可署名）</span>
+  <span id="bmSrc">底图：本项目自渲 XYZ 瓦片（数据源 GeoNames / © OpenStreetMap contributors (ODbL) / WorldPop / GDELT / NASA SRTM，均按各自许可署名）</span>
   <span class="sep">|</span>
   <span>渲染：MapLibre GL JS（BSD-3）· 桌面端为 QGIS（GPL-2.0）插件，二者共用同一 PostGIS 库、同一瓦片金字塔与同一问答服务</span>
   <span class="sep">|</span>
@@ -90,6 +92,6 @@
 </footer>
 
 <script src="vendor/maplibre-gl.js"></script>
-<script src="app.js?v=20261010"></script>
+<script src="app.js?v=20261022"></script>
 </body>
 </html>
