@@ -12,7 +12,8 @@
 
 const API = 'http://127.0.0.1:8600';
 const TILE_HOST = 'http://127.0.0.1:8090';
-const ISLAND = { center: [121.0, 23.7], zoom: 6.6 };
+const ISLAND = { center: [121.0, 23.7], zoom: 6.6 };   // 台湾缺省视角（region.json 缺失时兜底）
+let REGION = null;   // 区域配置（data/region.json）：中心点/行政层级/时间轴口径；平移新区域只换 config/region_<code>.json
 const POP_STEP = ['step', ['coalesce', ['get', 'pop'], 0],
   '#fff5eb', 100000, '#fee0c6', 300000, '#fdae6b', 600000, '#fd8d3c', 1500000, '#e31a1c', 2500000, '#8c0d0e'];
 
@@ -253,8 +254,33 @@ function guardBasemapErrors() {
   });
 }
 
+/* ───────── 区域配置 ───────── */
+/* 启动时读取导出快照随包的 data/region.json（export_web_data.py 生成）；读取失败则用台湾缺省，旧包仍可用 */
+async function loadRegion() {
+  try {
+    const r = await fetch('data/region.json', { cache: 'no-store' });
+    if (r.ok) REGION = await r.json();
+  } catch (e) { /* 缺省 */ }
+  const tl = (REGION && REGION.timeline) || { start: '2024-09', end: '2026-08' };
+  MONTHS = buildMonths(tl.start, tl.end);
+  applyRegionToLayers();
+}
+/* 行政层级叫法按区域配置改写图层标签与弹窗标题（台湾=县市/乡镇，福建=地级市/县区…） */
+function applyRegionToLayers() {
+  const a = (REGION && REGION.admin) || { level1: '县市', level2: '乡镇' };
+  const L1 = a.level1 || '县市', L2 = a.level2 || '乡镇';
+  const patch = {
+    pop_county: { label: `${L1}人口分级`, popup: [['name', L1], ['pop', '人口', wan]] },
+    county_line: { label: `${L1}界`, popup: [['name', L1]] },
+    town: { label: `${L2}人口`, popup: [['name', L2], ['pop', '人口', wan]] },
+    town_line: { label: `${L2}界` },
+  };
+  for (const L of LAYERS) { const p = patch[L.id]; if (p) { L.label = p.label; if (p.popup) L.popup = p.popup; } }
+}
+
 /* ───────── 初始化 ───────── */
 async function boot() {
+  await loadRegion();
   MODE = await detectMode();
   const badge = document.getElementById('modeBadge');
   badge.textContent = MODE === 'live' ? '实时模式 · /mvt 直读 PostGIS + 问答服务在线' : '离线模式 · GeoJSON 快照 + 随包瓦片';
@@ -262,7 +288,10 @@ async function boot() {
   document.getElementById('fullWrap').style.display = MODE === 'live' ? '' : 'none';
 
   map = new maplibregl.Map({
-    container: 'map', center: ISLAND.center, zoom: ISLAND.zoom, minZoom: 3, maxZoom: 14,
+    container: 'map',
+    center: (REGION && REGION.map && REGION.map.center) || ISLAND.center,
+    zoom: (REGION && REGION.map && REGION.map.zoom) || ISLAND.zoom,
+    minZoom: 3, maxZoom: 14,
     attributionControl: false,
     style: { version: 8, sources: {}, layers: [] },
   });
@@ -390,12 +419,18 @@ function buildLegend() {
   box.innerHTML = html;
 }
 
-/* ───────── 事件时间轴 ───────── */
-const MONTHS = (() => {
-  const out = []; let y = 2024, m = 9;
-  for (let i = 0; i < 24; i++) { out.push(`${y}-${String(m).padStart(2, '0')}`); if (++m > 12) { m = 1; y++; } }
-  return out;   // 2024-09 … 2026-08
-})();
+/* 事件时间轴月份序列：由区域配置 timeline 生成（缺省退回台湾口径 2024-09 起 24 个月） */
+let MONTHS = [];
+function buildMonths(start, end) {
+  const out = [];
+  let [y, m] = start.split('-').map(Number);
+  const [ey, em] = end.split('-').map(Number);
+  while (y < ey || (y === ey && m <= em)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    if (++m > 12) { m = 1; y++; }
+  }
+  return out;
+}
 function buildTimeline() {
   const lo = document.getElementById('tlMin'), hi = document.getElementById('tlMax');
   lo.max = hi.max = MONTHS.length - 1; hi.value = MONTHS.length - 1;

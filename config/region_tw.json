@@ -1,0 +1,14 @@
+{
+  "name_zh": "中国台湾省",
+  "short_zh": "台湾",
+  "pg": { "dbname": "tw", "schema": "tw" },
+  "map": { "center": [121.0, 23.7], "zoom": 6.6, "bbox": [119.3, 21.8, 122.1, 25.4] },
+  "admin": { "level1": "县市", "level2": "乡镇" },
+  "timeline": { "start": "2024-09", "end": "2026-08" },
+  "sources": {
+    "geonames": { "country": "TW", "note": "台湾省全域 geonames 抽取" },
+    "osm": { "relation": 449246, "overpass_area_id": 3600449246, "verify": "nominatim 复核 relation id" },
+    "worldpop": { "iso3": "TWN", "year": 2020, "note": "国家级栅格按 bbox 裁剪统计" },
+    "gdelt": { "sampling": "双周采样", "note": "GDELT 1.0 使用条款限非商业研究用途" }
+  }
+}

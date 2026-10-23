@@ -48,11 +48,52 @@ def _load_cfg():
     return cfg
 
 
+# ── 区域配置（区域模板化）：库名与模式来自 config/region_<code>.json（BW_REGION 环境变量选择，默认 tw）
+def _load_region():
+    import json
+    code = (os.environ.get("BW_REGION") or "tw").lower()
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "config", f"region_{code}.json")
+    with open(path, encoding="utf-8") as f:
+        r = json.load(f)
+    r["code"] = code
+    return r
+
+
+class _RegionCur:
+    """execute 时把 SQL 中的 "tw." 模式前缀重定向到区域配置的模式——同构库零 SQL 改动平移；
+    来源标注串（如 "tw.gaz_tw"）也会跟着改写，正好与真实库名一致。其余方法/属性透传。"""
+    def __init__(self, cur, schema):
+        self._c, self._s = cur, schema
+    def execute(self, q, *a, **k):
+        return self._c.execute(q.replace("tw.", f"{self._s}."), *a, **k)
+    def __getattr__(self, k):
+        return getattr(self._c, k)
+
+
+class _RegionConn:
+    def __init__(self, conn, schema):
+        self._c, self._s = conn, schema
+    def cursor(self, *a, **k):
+        return _RegionCur(self._c.cursor(*a, **k), self._s)
+    @property
+    def autocommit(self):
+        return self._c.autocommit
+    @autocommit.setter
+    def autocommit(self, v):
+        self._c.autocommit = v
+    def __getattr__(self, k):
+        return getattr(self._c, k)
+
+
 CFG = _load_cfg()
+REGION = _load_region()
+CFG["DB"] = REGION["pg"]["dbname"]      # 区域配置决定目标库；连接参数仍可由 config_local / 环境变量覆盖
+S_SCHEMA = REGION["pg"]["schema"]
 PGCTL, PGDATA, OLLAMA = CFG["PGCTL"], CFG["PGDATA"], CFG["OLLAMA"]
 CN_REG = re.compile(r"[\u4e00-\u9fff]{2,6}")
 
-app = FastAPI(title="地志智询 · 台湾人文地理 RAG")
+app = FastAPI(title=f"地志智询 · {REGION['name_zh']}人文地理 RAG")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -96,6 +137,7 @@ def get_conn():
             try:
                 _conn[0] = psycopg2.connect(host=CFG["HOST"], port=CFG["PORT"], dbname=CFG["DB"],
                                             user=CFG["USER"], password=CFG["PWD"])
+                _conn[0] = _RegionConn(_conn[0], S_SCHEMA)
                 _conn[0].autocommit = True
                 break
             except Exception:
