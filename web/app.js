@@ -157,30 +157,34 @@ function applyBasemap(v) {
   if (sel && sel.value !== v) sel.value = v;              // 编程切换（自动化/调试）时同步显示
   syncBmSwitch(v);
   const noteEl = document.getElementById('bmSrc');
-  if (!map || !map.getSource('basemap')) {                // 地图尚未 setupLayers 完成：只记状态，等加载后补应用
+  if (!map || !map.getSource('basemap-self')) {           // 地图尚未 setupLayers 完成：只记状态，等加载后补应用
     curBm = v;
     if (noteEl) noteEl.textContent = v === 'none' ? '底图：已关闭（仅显示业务图层）' : (ESRI[v] ? ESRI[v].note : LOCAL_NOTE);
     return;
   }
   curBm = v;
   if (v === 'none') {
-    map.setLayoutProperty('basemap', 'visibility', 'none');
+    map.setLayoutProperty('basemap-self', 'visibility', 'none');
+    map.setLayoutProperty('basemap-online', 'visibility', 'none');
     if (noteEl) noteEl.textContent = '底图：已关闭（仅显示业务图层）';
     dimFills(false);
     return;
   }
-  map.setLayoutProperty('basemap', 'visibility', 'visible');
-  map.getSource('basemap').setTiles(basemapTiles(v));
-  map.setMaxZoom(ESRI[v] ? 18 : 14);   // Esri 高分影像支持到 z18（台北 0.3–0.5m），自产瓦片到 z13（z14 全量）
-  if (noteEl) noteEl.textContent = ESRI[v] ? ESRI[v].note : LOCAL_NOTE;
-  dimFills(!!ESRI[v]);
+  const online = !!ESRI[v];
+  map.setLayoutProperty('basemap-self', 'visibility', online ? 'none' : 'visible');
+  map.setLayoutProperty('basemap-online', 'visibility', online ? 'visible' : 'none');
+  map.getSource(online ? 'basemap-online' : 'basemap-self').setTiles(basemapTiles(v));
+  // Esri 高分影像在台湾区域可到 z19；自产瓦片实体到 z13（z14 全量），超出层级走 overzoom 平滑放大
+  map.setMaxZoom(online ? 19 : 14);
+  if (noteEl) noteEl.textContent = online ? ESRI[v].note : LOCAL_NOTE;
+  dimFills(online);
 }
 
 /* 太空→街道 俯冲演示：Esri 高分影像上从全岛视角连续飞到台北街区 z17（对应样例视频效果） */
 const DIVE_TARGET = { center: [121.5654, 25.0330], zoom: 17 };   // 台北 101 周边街区
 let diveBak = null;
 function diveDemo() {
-  if (!map || !map.getSource('basemap')) return;
+  if (!map || !map.getSource('basemap-self')) return;
   applyBasemap('satellite');
   if (!diveBak) {                                   // 记录并暂时隐藏业务图层，影像俯冲更纯净
     diveBak = [];
@@ -237,7 +241,7 @@ async function gateOnlineBasemaps() {
 let bmErr = 0, bmErrTs = 0;
 function guardBasemapErrors() {
   map.on('error', e => {
-    if (!e || e.sourceId !== 'basemap' || !ESRI[curBm]) return;
+    if (!e || e.sourceId !== 'basemap-online' || !ESRI[curBm]) return;
     const now = Date.now();
     if (now - bmErrTs > 5000) bmErr = 0;
     bmErrTs = now;
@@ -285,10 +289,19 @@ let SETUP = false;
 async function setupLayers() {
   if (SETUP || !map) return;
   SETUP = true;
-  map.addSource('basemap', { type: 'raster', tiles: basemapTiles('terrain'), tileSize: 256,
-    bounds: [-180, -85, 180, 85] });
-  map.addLayer({ id: 'basemap', type: 'raster', source: 'basemap',
-    layout: { visibility: document.getElementById('basemap').value === 'none' ? 'none' : 'visible' } });
+  // 自产瓦片与 Esri 在线底图分设两个栅格源并各自声明 maxzoom：
+  // 超出层级的部分由 MapLibre 平滑 overzoom 放大显示——若共用单源不声明 maxzoom，
+  // 深 zoom 会按缺失层级直接请求瓦片（自产 z14+ 无瓦 → 空白；Esri z20+ 无瓦 → 触发错误兜底）
+  map.addSource('basemap-self', { type: 'raster', tiles: basemapTiles('terrain'), tileSize: 256,
+    maxzoom: 13, bounds: [-180, -85, 180, 85] });
+  map.addSource('basemap-online', { type: 'raster', tiles: ESRI.satellite.tiles, tileSize: 256,
+    maxzoom: 19, bounds: [-180, -85, 180, 85] });
+  const bmInit = document.getElementById('basemap').value;
+  map.addLayer({ id: 'basemap-self', type: 'raster', source: 'basemap-self',
+    layout: { visibility: (!ESRI[bmInit] && bmInit !== 'none') ? 'visible' : 'none' },
+    paint: { 'raster-resampling': 'nearest' } });        // 自产线划瓦片 overzoom 时保持边缘锐利
+  map.addLayer({ id: 'basemap-online', type: 'raster', source: 'basemap-online',
+    layout: { visibility: ESRI[bmInit] ? 'visible' : 'none' } });
 
   // 先几何后面：fill → line → circle（数组顺序即叠放次序）
   const order = { fill: 0, line: 1, circle: 2 };
