@@ -54,7 +54,7 @@ const LAYERS = [
     color: '#2b7ba8', popup: [['name', '港口'], ['kind', '类型']] },
   { id: 'power', label: '电厂', geom: 'circle', minzoom: 8, on: false, file: 'power', base: 2.6,
     color: '#a8434f', popup: [['name', '电厂'], ['fuel', '燃料'], ['cap_mw', '容量(MW)', num]] },
-  { id: 'events', label: '事件点（GDELT 采样）', geom: 'circle', minzoom: 5, on: false, file: 'events_2026', base: 2.4, field: 'mentions',
+  { id: 'events', label: '事件点（GDELT 采样）', geom: 'circle', minzoom: 5, on: false, file: 'events', base: 2.4, field: 'mentions',
     color: '#6f4fb0', timeline: true, popup: [['date', '日期'], ['place', '地点'], ['theme', '主题'], ['mentions', '提及数', num]] },
   { id: 'cities', label: '主要城市', geom: 'circle', minzoom: 3, on: true, file: 'cities', base: 3.0, field: 'pop',
     color: '#b32d2d', popup: [['name', '城市'], ['pop', '人口', wan]] },
@@ -104,6 +104,8 @@ function layerObj(L) {
   const lay = L.geom === 'line' ? { 'line-join': 'round', 'line-cap': 'round', visibility: L.on ? 'visible' : 'none' }
                                 : { visibility: L.on ? 'visible' : 'none' };
   const obj = { id: L.id, source: L.id, minzoom: L.minzoom, layout: lay };
+  if (L.geom === 'fill') obj.maxzoom = 15;    // 专题面层只服务中低缩放；z15+ 自动让位 Esri 高分影像
+  else if (L.geom === 'line') obj.maxzoom = 16;
   if (MODE === 'live') obj['source-layer'] = L.id;      // geojson 源不能有 source-layer 键
   if (L.geom === 'fill') return Object.assign(obj, { type: 'fill', paint: L.paint });
   if (L.geom === 'line') return Object.assign(obj, { type: 'line', paint: L.paint });
@@ -146,10 +148,21 @@ function dimFills(on) {
   }
 }
 
+let curBm = 'terrain';                                   // 当前底图键（供瓦片错误兜底判断）
+function syncBmSwitch(v) {                               // 悬浮单选与底图状态双向一致
+  document.querySelectorAll('#bmSwitch input[name="bmr"]').forEach(r => { r.checked = (r.value === v); });
+}
 function applyBasemap(v) {
   const sel = document.getElementById('basemap');
   if (sel && sel.value !== v) sel.value = v;              // 编程切换（自动化/调试）时同步显示
+  syncBmSwitch(v);
   const noteEl = document.getElementById('bmSrc');
+  if (!map || !map.getSource('basemap')) {                // 地图尚未 setupLayers 完成：只记状态，等加载后补应用
+    curBm = v;
+    if (noteEl) noteEl.textContent = v === 'none' ? '底图：已关闭（仅显示业务图层）' : (ESRI[v] ? ESRI[v].note : LOCAL_NOTE);
+    return;
+  }
+  curBm = v;
   if (v === 'none') {
     map.setLayoutProperty('basemap', 'visibility', 'none');
     if (noteEl) noteEl.textContent = '底图：已关闭（仅显示业务图层）';
@@ -158,8 +171,32 @@ function applyBasemap(v) {
   }
   map.setLayoutProperty('basemap', 'visibility', 'visible');
   map.getSource('basemap').setTiles(basemapTiles(v));
+  map.setMaxZoom(ESRI[v] ? 18 : 14);   // Esri 高分影像支持到 z18（台北 0.3–0.5m），自产瓦片到 z13（z14 全量）
   if (noteEl) noteEl.textContent = ESRI[v] ? ESRI[v].note : LOCAL_NOTE;
   dimFills(!!ESRI[v]);
+}
+
+/* 太空→街道 俯冲演示：Esri 高分影像上从全岛视角连续飞到台北街区 z17（对应样例视频效果） */
+const DIVE_TARGET = { center: [121.5654, 25.0330], zoom: 17 };   // 台北 101 周边街区
+let diveBak = null;
+function diveDemo() {
+  if (!map || !map.getSource('basemap')) return;
+  applyBasemap('satellite');
+  if (!diveBak) {                                   // 记录并暂时隐藏业务图层，影像俯冲更纯净
+    diveBak = [];
+    for (const L of LAYERS) if (map.getLayer(L.id)) {
+      diveBak.push([L.id, map.getLayoutProperty(L.id, 'visibility') || 'visible']);
+      map.setLayoutProperty(L.id, 'visibility', 'none');
+    }
+    labelMarkers.forEach(m => { if (m.getElement()) m.getElement().style.display = 'none'; });
+  }
+  map.once('moveend', () => {                       // 俯冲结束（或被打断）后恢复
+    if (!diveBak) return;
+    diveBak.forEach(([id, vis]) => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis); });
+    labelMarkers.forEach(m => { if (m.getElement()) m.getElement().style.display = ''; });
+    diveBak = null;
+  });
+  map.flyTo({ center: DIVE_TARGET.center, zoom: DIVE_TARGET.zoom, duration: 9000, curve: 1.42, essential: true });
 }
 
 /* 在线底图可达性探测：用 <img> 而非 fetch（瓦片服务无 CORS 头，fetch 会误判不可达） */
@@ -187,7 +224,29 @@ async function gateOnlineBasemaps() {
     o.disabled = true;
     o.textContent = o.textContent.replace('在线', '当前网络不可达');
   }
+  const sw = document.getElementById('bmSwitch');
+  if (sw) {
+    sw.classList.add('off');
+    sw.title = '在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
+    sw.querySelectorAll('input').forEach(i => { i.disabled = true; });
+  }
   sel.title = '在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
+}
+
+/* 在线底图运行期兜底：5 秒内连续 3 片加载失败即回落自产地形底图，避免现场长时间空白 */
+let bmErr = 0, bmErrTs = 0;
+function guardBasemapErrors() {
+  map.on('error', e => {
+    if (!e || e.sourceId !== 'basemap' || !ESRI[curBm]) return;
+    const now = Date.now();
+    if (now - bmErrTs > 5000) bmErr = 0;
+    bmErrTs = now;
+    if (++bmErr < 3) return;
+    bmErr = 0;
+    applyBasemap('terrain');
+    const noteEl = document.getElementById('bmSrc');
+    if (noteEl) noteEl.textContent = '在线底图连续加载失败，已自动回落自产地形底图（GeoNames / © OpenStreetMap contributors / WorldPop / GDELT / NASA SRTM）';
+  });
 }
 
 /* ───────── 初始化 ───────── */
@@ -210,6 +269,7 @@ async function boot() {
   }), 'bottom-right');
 
   map.on('load', () => setupLayers());
+  guardBasemapErrors();
 
   buildLayerPanel();
   buildLegend();
@@ -234,17 +294,19 @@ async function setupLayers() {
   const order = { fill: 0, line: 1, circle: 2 };
   for (const L of LAYERS.slice().sort((a, b) => order[a.geom] - order[b.geom])) {
     try {
+      if (MODE !== 'live' && !L.file) { L.liveOnly = true; throw new Error('实时模式图层，离线快照不携带'); }
       if (MODE === 'live') map.addSource(L.id, srcFor(L));
       else map.addSource(L.id, { type: 'geojson', data: await geoFor(L) });
       map.addLayer(layerObj(L));
       bindPopup(L);
     } catch (e) {
       console.warn('layer skip', L.id, e);
-      L.missing = true;
+      if (!L.liveOnly) L.missing = true;     // liveOnly 是预期跳过，不算加载失败
     }
   }
   await addCityLabels();
   buildLayerPanel();                       // 缺层信息回填面板
+  applyBasemap(curBm);                     // 补应用加载期间已选中的底图 + 校正面层不透明度
   document.getElementById('spin').style.display = 'none';
 }
 
@@ -287,9 +349,12 @@ function buildLayerPanel() {
   LAYERS.forEach(L => {
     const lab = document.createElement('label');
     lab.className = 'lyr';
-    const cnt = L.missing ? '（快照缺失）' : '';
-    lab.innerHTML = `<input type="checkbox" data-id="${L.id}" ${L.on && !L.missing ? 'checked' : ''} ${L.missing ? 'disabled' : ''}>
-      <div><div class="nm">${L.label}${cnt}</div><div class="meta">${L.geom === 'fill' ? '面' : L.geom === 'line' ? '线' : '点'} · z${L.minzoom} 起 · ${MODE === 'live' ? '矢量瓦片' : '快照'}</div></div>`;
+    const dead = L.liveOnly || L.missing;
+    const cnt = L.liveOnly ? '（需实时模式）' : L.missing ? '（加载失败）' : '';
+    lab.title = L.liveOnly ? '该图层数据量较大，未随离线快照分发：启动本地服务（server/rag_server.py）进入实时模式后可用'
+      : L.missing ? '图层加载失败：若为离线模式，请运行 pipeline/export_web_data.py 重新导出快照' : '';
+    lab.innerHTML = `<input type="checkbox" data-id="${L.id}" ${L.on && !dead ? 'checked' : ''} ${dead ? 'disabled' : ''}>
+      <div><div class="nm">${L.label}${cnt}</div><div class="meta">${L.geom === 'fill' ? '面' : L.geom === 'line' ? '线' : '点'} · z${L.minzoom} 起 · ${L.liveOnly ? '实时' : MODE === 'live' ? '矢量瓦片' : '快照'}</div></div>`;
     lab.querySelector('input').addEventListener('change', e => {
       if (!map.getLayer(L.id)) return;
       map.setLayoutProperty(L.id, 'visibility', e.target.checked ? 'visible' : 'none');
@@ -347,18 +412,26 @@ async function fillSrcNote() {
 }
 
 /* ───────── 问答与定位 ───────── */
-const EXAMPLES = ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
+/* 示例问句按模式给：离线快照事件覆盖 2024-09…2026-08，事件类示例须落在覆盖期内 */
+const EXAMPLES_LIVE = ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
   '台东县的关注度趋势', '彰化这个名字因何而来？'];
+const EXAMPLES_OFF = ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
+  '2026年3月发生了什么事件？', '彰化这个名字因何而来？'];
 function bindUI() {
   const sel = document.getElementById('basemap');
   sel.addEventListener('change', () => applyBasemap(sel.value));
+  document.querySelectorAll('#bmSwitch input[name="bmr"]').forEach(r => {
+    r.addEventListener('change', () => { if (r.checked) applyBasemap(r.value); });
+  });
+  const diveBtn = document.getElementById('diveBtn');
+  if (diveBtn) diveBtn.addEventListener('click', diveDemo);
   document.getElementById('fullTiles').addEventListener('change', () => {
     const v = sel.value; if (v !== 'none') applyBasemap(v);   // ESRI 源不受全量瓦片开关影响
   });
   document.getElementById('resetView').addEventListener('click', () => map.flyTo({ center: ISLAND.center, zoom: ISLAND.zoom }));
 
   const ex = document.getElementById('examples');
-  EXAMPLES.forEach(t => {
+  (MODE === 'live' ? EXAMPLES_LIVE : EXAMPLES_OFF).forEach(t => {
     const b = document.createElement('button');
     b.className = 'chip'; b.textContent = t;
     b.addEventListener('click', () => { document.getElementById('q').value = t; ask(); });
@@ -435,11 +508,94 @@ async function locate(names) {
   } catch (e) { setStatus('定位接口无响应：' + String(e.message || e).slice(0, 60)); }
 }
 
-/* 离线模式：把提问框降级为本地地名检索（快照内查找并飞行定位） */
+/* 离线模式：把提问框降级为本地检索——
+ * 带「年月」的事件问句走 GDELT 快照按月汇总并落图；其余问句按地名匹配并飞行定位。 */
+const DATE_RE = /(20\d{2})\s*年\s*(\d{1,2})\s*月/;
+const EVENT_KW = /事件|发生|什么|新闻|动态|态势|冲突|抗议|活动|GDELT/i;
+
+function offlineHint(html) {
+  const box = document.getElementById('locate');
+  box.hidden = false;
+  box.innerHTML = `<div class="card"><div class="txt">${html}</div></div>`;
+}
+
+async function localEventsByMonth(q, y, m) {
+  const ym = `${y}-${String(m).padStart(2, '0')}`;
+  setStatus(`离线模式：在 GDELT 快照中汇总 ${ym} 事件`);
+  let fc;
+  try { fc = await geoFor({ file: 'events' }); }
+  catch (e) { return offlineHint('事件快照缺失：请运行 pipeline/export_web_data.py 重新导出。'); }
+  const months = [...new Set(fc.features.map(f => (f.properties.date || '').slice(0, 7)))].sort();
+  const cover = months.length ? `${months[0]} 至 ${months[months.length - 1]}` : '空';
+  const hits = fc.features.filter(f => (f.properties.date || '').startsWith(ym));
+  if (!hits.length) {
+    setStatus('');
+    return offlineHint(`<b>${ym}</b> 不在离线事件快照覆盖范围（快照覆盖 <b>${cover}</b>，GDELT 双周采样口径）。<br>启动 RAG 服务（server/rag_server.py，端口 :8600）可检索全库事件。`);
+  }
+  // 汇总：主题分布 + 活跃地点 + 高提及头条（数字全部来自快照，不推测不填补）
+  const byTheme = {}, byPlace = {};
+  hits.forEach(f => {
+    const p = f.properties;
+    const t = p.theme || '其他';
+    byTheme[t] = (byTheme[t] || 0) + 1;
+    const loc = (p.place || '未标注').split(',')[0].trim();
+    byPlace[loc] = (byPlace[loc] || 0) + 1;
+  });
+  const themes = Object.entries(byTheme).sort((a, b) => b[1] - a[1]);
+  const places = Object.entries(byPlace).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const head = hits.slice().sort((a, b) => (b.properties.mentions || 0) - (a.properties.mentions || 0)).slice(0, 8);
+  document.getElementById('answer').innerHTML =
+    `<div class="card"><div class="tags"><span class="tag">离线检索</span><span class="tag">${ym}</span><span class="tag">${hits.length} 条</span></div>` +
+    `<div class="txt">${ym} 快照共收录事件 <b>${hits.length}</b> 条；主题分布：${themes.map(([t, n]) => `${t} ${n} 条`).join('，')}。` +
+    `较活跃地点：${places.map(([t, n]) => `${t}（${n} 条）`).join('、')}。</div>` +
+    `<div class="src">来源：web/data/events（GDELT 双周采样，快照覆盖 ${cover}；按月汇总、未做地点过滤）</div></div>`;
+  // 联动：打开事件层并把时间轴定位到所问月份
+  const cb = document.querySelector('#layerList input[data-id="events"]');
+  const evL = LAYERS.find(L => L.id === 'events');
+  if (evL && map.getLayer('events')) {
+    evL.on = true; if (cb) cb.checked = true;
+    map.setLayoutProperty('events', 'visibility', 'visible');
+    const i = MONTHS.indexOf(ym);
+    if (i >= 0) {
+      document.getElementById('tlMin').value = i;
+      document.getElementById('tlMax').value = i;
+    }
+    applyTimeline();
+  }
+  // 头条落图（点击飞行定位）
+  const box = document.getElementById('locate');
+  box.hidden = false;
+  box.innerHTML = `<div class="sub">${ym} 高提及事件（点击飞行定位）</div>`;
+  const bnds = new maplibregl.LngLatBounds();
+  head.forEach(f => {
+    const p = f.properties, c = f.geometry.coordinates;
+    bnds.extend(c);
+    const el = document.createElement('div'); el.className = 'pin';
+    const mk = new maplibregl.Marker({ element: el }).setLngLat(c)
+      .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML(
+        `<h4>${p.place || ''}</h4><table><tr><td>日期</td><td>${p.date}</td></tr>` +
+        `<tr><td>主题</td><td>${p.theme || '—'}</td></tr><tr><td>提及</td><td>${num(p.mentions)}</td></tr></table>`))
+      .addTo(map);
+    qaMarkers.push(mk);
+    const row = document.createElement('div');
+    row.className = 'pt';
+    row.innerHTML = `<span>${(p.place || '').split(',')[0]} · ${p.theme || '其他'}</span><span>${num(p.mentions)} 提及</span>`;
+    row.addEventListener('click', () => { map.flyTo({ center: c, zoom: 8 }); mk.togglePopup(); });
+    box.appendChild(row);
+  });
+  map.fitBounds(bnds, { padding: 90, maxZoom: 9, duration: 900 });
+  setStatus('');
+}
+
 async function localSearch(q) {
+  qaMarkers.forEach(m => m.remove()); qaMarkers = [];
+  const dm = q.match(DATE_RE);
+  if (dm && EVENT_KW.test(q)) return localEventsByMonth(q, +dm[1], +dm[2]);
+  if (EVENT_KW.test(q)) {
+    return offlineHint('离线快照支持「年月 + 事件」式提问，例如「<b>2026年5月发生了什么事件？</b>」；<br>完整自然语言问答请启动 RAG 服务（server/rag_server.py，端口 :8600）。');
+  }
   setStatus('离线模式：在快照中做地名检索（提问需启动 server/rag_server.py）');
   const keys = ['cities', 'places', 'peaks', 'ports', 'pop_county'];
-  qaMarkers.forEach(m => m.remove()); qaMarkers = [];
   const hits = [];
   for (const k of keys) {
     try {
@@ -454,7 +610,7 @@ async function localSearch(q) {
   const box = document.getElementById('locate');
   if (!hits.length) {
     box.hidden = false;
-    box.innerHTML = '<div class="card"><div class="txt">快照内未检索到该地名。启动 RAG 服务后可用自然语言问答。</div></div>';
+    box.innerHTML = '<div class="card"><div class="txt">快照内未检索到该地名。若问的是事件，请带上年月（如「2026年5月发生了什么事件？」）；自然语言问答需启动 RAG 服务。</div></div>';
     return;
   }
   box.hidden = false;

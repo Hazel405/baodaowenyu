@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-01 23:11:21",
+ "generated": "2026-10-22 23:53:28",
  "note": "离线快照：数据源见 data/DATA_SOURCES.md；实时模式请启服务走 /mvt 与 /api/ask",
  "crs": "EPSG:4326",
  "layers": {
@@ -19,7 +19,7 @@
    "label": "乡镇界与人口",
    "kind": "polygon",
    "count": 204,
-   "bytes": 405003
+   "bytes": 399303
   },
   "cities": {
    "label": "主要城市",
@@ -51,12 +51,12 @@
    "count": 506,
    "bytes": 74333
   },
-  "events_2026": {
-   "label": "2026 事件点",
+  "events": {
+   "label": "事件点",
    "kind": "point",
-   "count": 1600,
-   "bytes": 276070
+   "count": 5960,
+   "bytes": 1029664
   }
  },
- "total_bytes": 1058057
+ "total_bytes": 1805951
 }

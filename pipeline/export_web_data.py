@@ -49,10 +49,15 @@ LAYERS = [
     ("power", "电厂", "point", """
         SELECT geom, jsonb_build_object('name', name, 'fuel', fuel, 'cap_mw', cap_mw) AS props
         FROM tw.power_capacity ORDER BY cap_mw DESC NULLS LAST LIMIT 520"""),
-    ("events_2026", "2026 事件点", "point", """
+    # 事件点：按月各取提及数 Top250，覆盖 2024-09…2026-08（与网页时间轴口径一致）；
+    # 2024-09 之前库内仅零散历史补录（单月个位数），不入快照
+    ("events", "事件点", "point", """
         SELECT geom, jsonb_build_object('date', to_char(sqldate, 'YYYY-MM-DD'), 'theme', root_name,
                                         'mentions', mentions, 'place', geo_name) AS props
-        FROM tw.events WHERE sqldate >= '2026-01-01' ORDER BY mentions DESC NULLS LAST LIMIT 1600"""),
+        FROM (SELECT e.*, row_number() OVER (PARTITION BY to_char(sqldate, 'YYYY-MM')
+                                             ORDER BY mentions DESC NULLS LAST) AS rn
+              FROM tw.events e WHERE sqldate >= '2024-09-01') t
+        WHERE rn <= 250"""),
 ]
 
 

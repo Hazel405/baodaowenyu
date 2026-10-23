@@ -25,7 +25,8 @@ baodaowenyu/
 │   ├── build_web_tiles.py                      随包低层级瓦片打包
 │   └── make_handoff.py                         生成可分发的交付快照（含合规自检与文件数校验）
 ├── basemap\                  自产瓦片金字塔 street/ terrain/ hillshade/ hist_*\
-├── web\                      ★ 网页查看端（MapLibre，双模式：实时 MVT+问答 / 离线快照）
+├── web\                      ★ 网页查看端（MapLibre，双模式：实时 MVT+问答 / 离线快照；
+│   │                         在线底图可一键切换 Esri 卫星影像 / 街道图，仅在线拉取、不随包分发）
 │   ├── index.html app.js style.css README.md
 │   ├── vendor\               maplibre-gl 4.7.1（BSD-3，随包，无公网 CDN）
 │   └── data\ tiles\          离线快照与低层级瓦片（由 pipeline 生成）
@@ -46,6 +47,27 @@ baodaowenyu/
 3. 双击 `scripts\start_services.bat`（起 :8090 瓦片 + :8600 RAG，需本机 PostgreSQL:5433 与 Ollama qwen3:8b）；
 4. 双击 `scripts\install_plugin.bat`（复制插件到当前 QGIS 用户配置目录）；
 5. 打开 QGIS → 插件菜单「宝岛文舆」→ 依次点 **★ 打开演示工程 → 图层工作台 → 询（问答） → 较 → 析**。
+
+## 优化路线（Roadmap）
+
+### R1 · 在线底图增强：Esri 卫星影像与街道图（当前迭代）
+
+在自产瓦片之上新增**可选在线底图**：用户按需一键切换卫星影像 / 街道参考，离线模式不受影响。
+
+- **图层源**（Esri 公共瓦片端点，客户端实时拉取）：
+  - 卫星影像：`World_Imagery` — `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`
+  - 街道参考：`World_Street_Map` — 同目录树 `World_Street_Map/MapServer`
+- **合规边界（红线不动）**：只在线拉取、不入库、不预下载、不缓存再分发、不随包打包——
+  与"底图零第三方瓦片再分发"不冲突（该红线针对的是**导出再分发**，客户端实时渲染引用是端点的标准用法）；
+  端点不可达时自动回落自产瓦片，保证离线演示零依赖。
+- **署名要求**：页面与工程按 Esri 条款保留 "Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"。
+- **实现要点**：
+  - web\：MapLibre 新增 raster source + 底图切换控件（自产街道 / 自产地形 / Esri 卫星 / Esri 街道），
+    叠加层（自产数据、历史舆图）始终位于在线底图之上；
+  - 插件：演示工程内置 Esri XYZ 连接（QGIS 原生支持 XYZ Layer，零新依赖），浏览工作台加"在线底图"开关；
+  - 二者共用一份白名单配置（`ESRI_BASEMAPS`），民用要素与在线底图分离审查。
+
+---
 
 ## 与"直接用百度地图"的结构性差异（常见疑问）
 
