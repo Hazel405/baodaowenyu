@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """export_web_data.py — 导出 Web 查看端离线模式用的 GeoJSON 快照。
 
-用法：python pipeline\\export_web_data.py [--region tw|fj|…]
-产物：web\\data\\*.geojson + web\\data\\manifest.json（记录条数/字节/生成时间）
-      + web\\data\\region.json（网页查看端启动时读取：中心点/行政层级/时间轴口径）
+用法：python pipeline\\export_web_data.py [--region tw|fj|…] [--out 目录]
+产物：<out>\\*.geojson + <out>\\manifest.json（记录条数/字节/生成时间）
+      + <out>\\region.json（网页查看端启动时读取：中心点/行政层级/时间轴口径）
+      --out 缺省 web\\data；平移验证其他区域时建议另指目录（如 web\\data_fj），
+      避免覆盖交付主区域（tw）已发布的离线快照。
 区域模板化：库名、模式前缀、事件时间轴范围全部来自 config/region_<code>.json；
       平移新区域只需新增一份配置并用 --region（或环境变量 BW_REGION）指定。
 设计：离线模式只需"能看懂的骨架"——一级行政区人口面、界线、主要聚落、设施点与事件点；
@@ -78,13 +80,14 @@ def main():
     global REGION, S
     ap = argparse.ArgumentParser(description="导出 Web 查看端离线快照")
     ap.add_argument("--region", help="区域代码，对应 config/region_<code>.json（缺省取 BW_REGION 环境变量，再缺省 tw）")
+    ap.add_argument("--out", default=OUT, help=f"快照输出目录（缺省 {OUT}；验证非主区域请另指目录）")
     args = ap.parse_args()
     REGION = load_region(args.region)
     S = REGION["pg"]["schema"]
     PG = dict(PG_BASE, dbname=REGION["pg"]["dbname"])
     print(f"region={REGION['code']}  db={PG['dbname']}  schema={S}  timeline={REGION['timeline']['start']}…{REGION['timeline']['end']}")
 
-    os.makedirs(OUT, exist_ok=True)
+    os.makedirs(args.out, exist_ok=True)
     c = psycopg2.connect(**PG)
     cur = c.cursor()
     manifest = {"generated": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -100,7 +103,7 @@ def main():
                         FROM ({sql}) s""")
         gj = cur.fetchone()[0]
         feats = len(gj["features"]) if isinstance(gj, dict) else 0
-        path = os.path.join(OUT, fname + ".geojson")
+        path = os.path.join(args.out, fname + ".geojson")
         with io_open(path, "w") as f:
             json.dump(gj, f, ensure_ascii=False, separators=(",", ":"))
         size = os.path.getsize(path)
@@ -108,13 +111,13 @@ def main():
         manifest["layers"][fname] = {"label": label, "kind": kind, "count": feats, "bytes": size}
         print(f"{fname:14s} {feats:>6} feats  {size/1024:>8.1f} KB")
     manifest["total_bytes"] = total
-    with io_open(os.path.join(OUT, "manifest.json"), "w") as f:
+    with io_open(os.path.join(args.out, "manifest.json"), "w") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=1)
     # 区域配置的网页子集：查看端启动时读取（中心点/行政层级标签/时间轴口径），失败则退回台湾缺省
-    with io_open(os.path.join(OUT, "region.json"), "w") as f:
+    with io_open(os.path.join(args.out, "region.json"), "w") as f:
         json.dump(web_subset(REGION), f, ensure_ascii=False, indent=1)
     c.close()
-    print(f"TOTAL {total/1024/1024:.2f} MB -> {OUT}")
+    print(f"TOTAL {total/1024/1024:.2f} MB -> {args.out}")
 
 
 def io_open(path, mode):

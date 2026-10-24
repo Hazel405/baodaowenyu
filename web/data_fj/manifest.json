@@ -1,0 +1,63 @@
+{
+ "generated": "2026-10-24 11:42:45",
+ "note": "离线快照：数据源见 data/DATA_SOURCES.md；实时模式请启服务走 /mvt 与 /api/ask",
+ "region": "fj",
+ "crs": "EPSG:4326",
+ "layers": {
+  "pop_county": {
+   "label": "地级市人口",
+   "kind": "polygon",
+   "count": 84,
+   "bytes": 348376
+  },
+  "county_line": {
+   "label": "地级市界",
+   "kind": "line",
+   "count": 84,
+   "bytes": 397146
+  },
+  "town": {
+   "label": "县区界与人口",
+   "kind": "polygon",
+   "count": 0,
+   "bytes": 56
+  },
+  "cities": {
+   "label": "主要城市",
+   "kind": "point",
+   "count": 9,
+   "bytes": 1334
+  },
+  "places": {
+   "label": "聚落点（万人以上）",
+   "kind": "point",
+   "count": 25,
+   "bytes": 3450
+  },
+  "peaks": {
+   "label": "山峰",
+   "kind": "point",
+   "count": 57,
+   "bytes": 8161
+  },
+  "ports": {
+   "label": "港口",
+   "kind": "point",
+   "count": 16,
+   "bytes": 2673
+  },
+  "power": {
+   "label": "电厂",
+   "kind": "point",
+   "count": 22,
+   "bytes": 3326
+  },
+  "events": {
+   "label": "事件点",
+   "kind": "point",
+   "count": 4915,
+   "bytes": 781537
+  }
+ },
+ "total_bytes": 1546059
+}

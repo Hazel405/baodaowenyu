@@ -82,6 +82,10 @@ baodaowenyu/
   新增 `pipeline/region_check.py` 配置静态校验器（TW/FJ 双 PASS）。
 - **平移指南**：见 [docs/区域模板化平移手册.md](docs/区域模板化平移手册.md)
   （十步流程 + 阶段二诚实声明：import/render 脚本参数、QA 规则口径、插件文案、历史舆图模板仍为台湾专属，须人工复校）。
+- **FJ 实跑（2026-10-24）**：福建配置首次端到端跑通——九表入库（GeoNames 33,888 /
+  DataV 三级边界 94 / GHSL 县区人口 84 合计 3,862 万 / 港电示范 16+22 / GDELT DOC 2.0 事件 5,750），
+  快照经 `export_web_data.py --region fj --out web\data_fj` 另目录导出，未触碰 TW 主快照；
+  口径差异（GHSL 1km vs WorldPop 100m、DOC 2.0 ArtList vs Event 1.0、429 缺窗）见平移手册 §6。
 
 ---
 
