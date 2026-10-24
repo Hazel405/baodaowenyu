@@ -43,6 +43,7 @@ aside{background:var(--panel);overflow-y:auto;padding:2px 14px 18px}
 .lyr .meta{font-size:11px;color:var(--ink2)}
 .legend .row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink2);margin:3px 0}
 .legend i{width:22px;height:11px;border-radius:2px;display:inline-block;border:1px solid rgba(0,0,0,.25)}
+.legend i.dot{width:11px;height:11px;border-radius:50%}
 .legend .ln{height:0;border-top-width:2px;border-top-style:solid}
 .tl{padding:2px 0 6px}
 .tl input[type=range]{width:100%;accent-color:var(--acc);margin:2px 0}
@@ -124,3 +125,33 @@ footer .warn{color:var(--acc2)}
 .bmswitch .dive{margin-top:5px;border:0;border-radius:5px;background:#2563eb;color:#fff;
   font-size:11.5px;font-weight:600;padding:4px 8px;cursor:pointer;white-space:nowrap}
 .bmswitch .dive:hover{background:#1d4ed8}
+
+/* ── 顶栏区域切换（R2 模板化：台湾/福建一键切换） ── */
+.rgsw{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.rgsw button{background:transparent;border:0;color:var(--ink2);font-size:12.5px;
+  padding:4px 12px;cursor:pointer;letter-spacing:1px}
+.rgsw button:hover{color:var(--ink)}
+.rgsw button.on{background:var(--acc);color:#06212a;font-weight:700}
+
+/* ── 事件时间轴播放控件 ── */
+.tlplay{display:flex;align-items:center;gap:8px;margin:6px 0 2px}
+.tlplay select{padding:3px 6px;font-size:12px}
+.tlplay .chk{font-size:12px}
+#tlPlay{min-width:64px}
+
+/* ── 开场导览遮罩 ── */
+.intro{position:fixed;inset:0;z-index:40;background:rgba(5,16,21,.62);
+  display:grid;place-items:center;backdrop-filter:blur(2px)}
+.intro[hidden]{display:none}
+.intro-card{width:440px;max-width:calc(100vw - 40px);background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:20px 22px 16px;
+  box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.intro-card h3{margin:0 0 10px;font-size:16px;color:var(--acc);letter-spacing:1px}
+.intro-body{font-size:13px;line-height:1.9;color:var(--ink);min-height:118px}
+.intro-body b{color:var(--acc2)}
+.intro-nav{display:flex;align-items:center;gap:10px;margin-top:14px}
+.intro-nav button{border-radius:7px;padding:5px 14px;font-size:12.5px}
+.intro-nav #introNext{background:var(--acc);border:0;color:#06212a;font-weight:600}
+.intro-dots{flex:1;text-align:center;letter-spacing:6px;font-size:11px;color:var(--ink2)}
+.intro-dots i{font-style:normal;opacity:.35}
+.intro-dots i.on{opacity:1;color:var(--acc)}

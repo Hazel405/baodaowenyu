@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>宝岛文舆 · 开源 GIS 地志智询系统 — 网页查看端</title>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=20261022">
+<link rel="stylesheet" href="style.css?v=20261025">
 </head>
 <body>
 <header>
@@ -13,11 +13,14 @@
     <span class="logo">舆</span>
     <div class="brandtxt">
       <h1>宝岛文舆 · 开源 GIS 地志智询系统</h1>
-      <p>中国台湾省人文地理地志库 · QGIS 插件同源数据 · 网页查看端</p>
+      <p id="brandSub">中国台湾省人文地理地志库 · QGIS 插件同源数据 · 网页查看端</p>
     </div>
   </div>
   <div class="toolbar">
     <span id="modeBadge" class="badge">正在检测本地服务…</span>
+    <div class="rgsw" id="rgSwitch" title="区域模板化一键切换：快照数据、行政层级口径、中心视角随区域整体更换（R2）">
+      <button data-rg="tw" class="on">台湾</button><button data-rg="fj">福建</button>
+    </div>
     <label class="fld">底图
       <select id="basemap">
         <option value="terrain">地形晕渲（自产）</option>
@@ -28,7 +31,8 @@
       </select>
     </label>
     <label class="chk" id="fullWrap"><input type="checkbox" id="fullTiles"> 全量瓦片 z0–13</label>
-    <button id="resetView" class="ghost">回到全岛</button>
+    <button id="resetView" class="ghost">回到全域</button>
+    <button id="helpBtn" class="ghost" title="重新打开开场导览">使用导览</button>
   </div>
 </header>
 
@@ -44,6 +48,15 @@
       <input type="range" id="tlMin" min="0" max="20" value="0" step="1">
       <input type="range" id="tlMax" min="0" max="20" value="20" step="1">
       <div id="tlLabel" class="sub">全部时段</div>
+      <div class="tlplay">
+        <button id="tlPlay" class="ghost" title="从时间轴起点逐月累积回放事件点">▶ 播放</button>
+        <select id="tlSpeed" title="播放速度">
+          <option value="1200">慢</option>
+          <option value="650" selected>中</option>
+          <option value="280">快</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="tlLoop" checked> 循环</label>
+      </div>
     </div>
     <h2>数据与许可</h2>
     <p class="sub" id="srcNote">加载中…</p>
@@ -97,7 +110,21 @@
   <span class="warn">教学与科研参考，不用于导航、产权或行政边界判定；台湾省为中华人民共和国省级行政区域，金门、马祖作相应标注</span>
 </footer>
 
+<div id="intro" class="intro" hidden>
+  <div class="intro-card" role="dialog" aria-modal="true" aria-labelledby="introTitle">
+    <h3 id="introTitle">欢迎使用</h3>
+    <div id="introBody" class="intro-body"></div>
+    <div class="intro-nav">
+      <button id="introPrev" class="ghost">上一步</button>
+      <span id="introDots" class="intro-dots"></span>
+      <button id="introNext">下一步</button>
+      <button id="introSkip" class="ghost">关闭</button>
+    </div>
+    <p class="sub" style="margin:10px 0 0">顶栏「使用导览」可随时重新打开本导览。</p>
+  </div>
+</div>
+
 <script src="vendor/maplibre-gl.js"></script>
-<script src="app.js?v=20261022"></script>
+<script src="app.js?v=20261025"></script>
 </body>
 </html>

@@ -14,11 +14,31 @@ const API = 'http://127.0.0.1:8600';
 const TILE_HOST = 'http://127.0.0.1:8090';
 const ISLAND = { center: [121.0, 23.7], zoom: 6.6 };   // 台湾缺省视角（region.json 缺失时兜底）
 let REGION = null;   // 区域配置（data/region.json）：中心点/行政层级/时间轴口径；平移新区域只换 config/region_<code>.json
+/* 区域一键切换（R2 区域模板化）：快照目录与 URL ?region= 绑定，缺省台湾（交付主区域）。
+ * 切换=带参刷新整页——数据源/口径/示例/视角随 region.json 整体更换，避免半套旧数据残留 */
+const RG_DIRS = { tw: 'data', fj: 'data_fj' };
+function rgCode() { const p = new URLSearchParams(location.search).get('region'); return RG_DIRS[p] ? p : 'tw'; }
+const RG_CODE = rgCode();
+const DATA_DIR = RG_DIRS[RG_CODE];
+function switchRegion(code) {
+  if (!RG_DIRS[code] || code === RG_CODE) return;
+  const u = new URL(location.href);
+  u.searchParams.set('region', code);
+  location.href = u.toString();
+}
 const POP_STEP = ['step', ['coalesce', ['get', 'pop'], 0],
   '#fff5eb', 100000, '#fee0c6', 300000, '#fdae6b', 600000, '#fd8d3c', 1500000, '#e31a1c', 2500000, '#8c0d0e'];
 
 const wan = v => (v == null || isNaN(v)) ? '—' : (v >= 10000 ? (v / 10000).toFixed(1) + ' 万' : String(Math.round(v)));
 const num = v => (v == null || isNaN(v)) ? '—' : Number(v).toLocaleString('zh-CN');
+
+/* 事件主题配色（GDELT 关键词归类根主题）：「其他/综合」保持品牌紫——TW 快照主题统一为「其他」故全紫，
+ * FJ 快照十类分色。兜底点（GDELT 未落到城市、回退省级）统一降透明退居背景，真实落点醒目 */
+const THEME_COLORS = {
+  '综合': '#9467bd', '教育科技': '#1f77b4', '经济发展': '#ff7f0e', '文旅活动': '#2ca02c',
+  '生态环境': '#8c564b', '台风': '#17becf', '两岸交流': '#e377c2', '体育赛事': '#bcbd22',
+  '暴雨洪涝': '#d62728', '地震': '#7f7f7f', '交通事故': '#b15928', '其他': '#6f4fb0',
+};
 
 // 图层定义：paint 与数据源类型无关，live/offline 共用；字段名两侧已对齐（name/pop/elev/kind/…）
 const LAYERS = [
@@ -56,7 +76,7 @@ const LAYERS = [
   { id: 'power', label: '电厂', geom: 'circle', minzoom: 8, on: false, file: 'power', base: 2.6,
     color: '#a8434f', popup: [['name', '电厂'], ['fuel', '燃料'], ['cap_mw', '容量(MW)', num]] },
   { id: 'events', label: '事件点（GDELT 采样）', geom: 'circle', minzoom: 5, on: false, file: 'events', base: 2.4, field: 'mentions',
-    color: '#6f4fb0', timeline: true, popup: [['date', '日期'], ['place', '地点'], ['theme', '主题'], ['mentions', '提及数', num]] },
+    color: '#6f4fb0', timeline: true, themed: true, popup: [['date', '日期'], ['place', '地点'], ['theme', '主题'], ['mentions', '提及数', num]] },
   { id: 'cities', label: '主要城市', geom: 'circle', minzoom: 3, on: true, file: 'cities', base: 3.0, field: 'pop',
     color: '#b32d2d', popup: [['name', '城市'], ['pop', '人口', wan]] },
 ];
@@ -86,15 +106,45 @@ function srcFor(L) {
   return null;   // offline 走 geojson
 }
 async function geoFor(L) {
-  const r = await fetch(`data/${L.file}.geojson`);
+  const r = await fetch(`${DATA_DIR}/${L.file}.geojson`);
   if (!r.ok) throw new Error(L.file + ' 缺失');
   return r.json();
+}
+/* 带超时的快照读取：静态服务偶发挂起时，串行 await 会被单个请求拖死整层加载；
+ * 超时即 reject，该层如实标记「加载失败」，不阻塞其余图层（答辩现场网络不可控） */
+async function geoForT(L, ms) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms || 20000);
+  try {
+    const r = await fetch(`${DATA_DIR}/${L.file}.geojson`, { signal: c.signal });
+    if (!r.ok) throw new Error(L.file + ' 缺失');
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+/* 瞬时抖动（偶发挂起/中断）下重试 2 次再放弃，避免单点网络毛刺直接判层缺失 */
+async function geoForRetry(L) {
+  for (let k = 0; ; k++) {
+    try { return await geoForT(L, 15000); }
+    catch (e) { if (k >= 2) throw e; }
+  }
 }
 
 function circlePaint(L) {
   const rad = ['interpolate', ['linear'], ['zoom'], 4, radAt(L, 4), 12, radAt(L, 12)];
-  return { 'circle-color': L.color, 'circle-radius': rad, 'circle-opacity': 0.88,
+  const base = { 'circle-color': L.color, 'circle-radius': rad, 'circle-opacity': 0.88,
            'circle-stroke-color': '#fff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 12, 1.4] };
+  if (!L.themed) return base;
+  /* 兜底点判定：FJ 快照兜底为省名精确值（place==='福建'）；TW 快照兜底为 'Taiwan' 或含 '(general)' 的
+   * GeoNames 串。兜底点低透明+放大，真实城市落点保持原样式——一眼区分"落到了城市"与"只落到省" */
+  const fb = ['any', ['==', ['get', 'place'], (REGION && REGION.short_zh) || ''],
+    ['==', ['get', 'place'], 'Taiwan'], ['>', ['index-of', 'general', ['get', 'place']], -1]];
+  const pairs = Object.entries(THEME_COLORS).flatMap(([t, c]) => [t, c]);
+  return Object.assign(base, {
+    'circle-color': ['match', ['get', 'theme'], ...pairs, '#6f4fb0'],
+    'circle-opacity': ['case', fb, 0.25, 0.88],
+    'circle-radius': ['case', fb, ['*', rad, 1.5], rad],
+    'circle-stroke-opacity': ['case', fb, 0.12, 0.95],
+  });
 }
 function radAt(L, z) {
   if (!L.field) return L.base * (z > 8 ? 1.7 : 1);
@@ -181,8 +231,11 @@ function applyBasemap(v) {
   dimFills(online);
 }
 
-/* 太空→街道 俯冲演示：Esri 高分影像上从全岛视角连续飞到台北街区 z17（对应样例视频效果） */
-const DIVE_TARGET = { center: [121.5654, 25.0330], zoom: 17 };   // 台北 101 周边街区
+/* 太空→街道 俯冲演示：Esri 高分影像上从全域视角连续飞到代表街区（对应样例视频效果） */
+const DIVE_TARGET = {
+  tw: { center: [121.5654, 25.0330], zoom: 17, label: '台北 101 周边街区' },
+  fj: { center: [119.6426, 26.0810], zoom: 16, label: '福州三坊七巷历史街区' },
+};
 let diveBak = null;
 function diveDemo() {
   if (!map || !map.getSource('basemap-self')) return;
@@ -201,7 +254,8 @@ function diveDemo() {
     labelMarkers.forEach(m => { if (m.getElement()) m.getElement().style.display = ''; });
     diveBak = null;
   });
-  map.flyTo({ center: DIVE_TARGET.center, zoom: DIVE_TARGET.zoom, duration: 9000, curve: 1.42, essential: true });
+  const t = DIVE_TARGET[RG_CODE] || DIVE_TARGET.tw;
+  map.flyTo({ center: t.center, zoom: t.zoom, duration: 9000, curve: 1.42, essential: true });
 }
 
 /* 在线底图可达性探测：用 <img> 而非 fetch（瓦片服务无 CORS 头，fetch 会误判不可达） */
@@ -255,10 +309,10 @@ function guardBasemapErrors() {
 }
 
 /* ───────── 区域配置 ───────── */
-/* 启动时读取导出快照随包的 data/region.json（export_web_data.py 生成）；读取失败则用台湾缺省，旧包仍可用 */
+/* 启动时读取当前区域快照随包的 region.json（export_web_data.py 生成）；读取失败则用台湾缺省，旧包仍可用 */
 async function loadRegion() {
   try {
-    const r = await fetch('data/region.json', { cache: 'no-store' });
+    const r = await fetch(`${DATA_DIR}/region.json`, { cache: 'no-store' });
     if (r.ok) REGION = await r.json();
   } catch (e) { /* 缺省 */ }
   const tl = (REGION && REGION.timeline) || { start: '2024-09', end: '2026-08' };
@@ -281,6 +335,17 @@ function applyRegionToLayers() {
 /* ───────── 初始化 ───────── */
 async function boot() {
   await loadRegion();
+  // 区域化界面铭牌：切换器高亮、副标题、页标题、俯冲按钮提示、示例问句均随当前区域
+  document.querySelectorAll('#rgSwitch button').forEach(b => {
+    b.classList.toggle('on', b.dataset.rg === RG_CODE);
+    b.addEventListener('click', () => switchRegion(b.dataset.rg));
+  });
+  document.getElementById('brandSub').textContent =
+    `${(REGION && REGION.name_zh) || '中国台湾省'}人文地理地志库 · ${RG_CODE === 'tw' ? 'QGIS 插件同源数据' : '区域模板化平移验证（R2 实跑）'} · 网页查看端`;
+  document.title = `宝岛文舆 · 开源 GIS 地志智询系统 — 网页查看端（${(REGION && REGION.short_zh) || '台湾'}）`;
+  const dv = DIVE_TARGET[RG_CODE] || DIVE_TARGET.tw;
+  const diveBtn0 = document.getElementById('diveBtn');
+  if (diveBtn0) diveBtn0.title = `从全域视角连续俯冲到${dv.label}（Esri 高分影像，约 9 秒）`;
   MODE = await detectMode();
   const badge = document.getElementById('modeBadge');
   badge.textContent = MODE === 'live' ? '实时模式 · /mvt 直读 PostGIS + 问答服务在线' : '离线模式 · GeoJSON 快照 + 随包瓦片';
@@ -302,6 +367,7 @@ async function boot() {
   }), 'bottom-right');
 
   map.on('load', () => setupLayers());
+  setTimeout(setupLayers, 5000);           // 兜底：'load' 因底图瓦片异常未触发时，5 秒后强启（SETUP 幂等，正常路径空转）
   guardBasemapErrors();
 
   buildLayerPanel();
@@ -311,6 +377,7 @@ async function boot() {
   gateOnlineBasemaps();
   await fillSrcNote();
   initHazard();
+  initIntro();
   window.BW = { map: () => map, setup: setupLayers, ask, locate, LAYERS, mode: () => MODE, basemap: applyBasemap };  // 调试/自动化句柄
 }
 
@@ -333,29 +400,38 @@ async function setupLayers() {
     layout: { visibility: ESRI[bmInit] ? 'visible' : 'none' } });
 
   // 先几何后面：fill → line → circle（数组顺序即叠放次序）
+  // 离线快照并行预取（geoForRetry 带超时+重试）：任何一个请求挂起都只影响本层，不再拖死整图加载
+  const dataMap = new Map();
+  if (MODE !== 'live') {
+    await Promise.all(LAYERS.filter(L => L.file).map(async L => {
+      try { dataMap.set(L.id, await geoForRetry(L)); }
+      catch (e) { console.warn('layer skip', L.id, e); L.missing = true; }
+    }));
+  }
   const order = { fill: 0, line: 1, circle: 2 };
   for (const L of LAYERS.slice().sort((a, b) => order[a.geom] - order[b.geom])) {
     try {
       if (MODE !== 'live' && !L.file) { L.liveOnly = true; throw new Error('实时模式图层，离线快照不携带'); }
       if (MODE === 'live') map.addSource(L.id, srcFor(L));
-      else map.addSource(L.id, { type: 'geojson', data: await geoFor(L) });
+      else if (dataMap.has(L.id)) map.addSource(L.id, { type: 'geojson', data: dataMap.get(L.id) });
+      else { L.missing = true; throw new Error('快照数据缺失'); }
       map.addLayer(layerObj(L));
       bindPopup(L);
     } catch (e) {
       console.warn('layer skip', L.id, e);
-      if (!L.liveOnly) L.missing = true;     // liveOnly 是预期跳过，不算加载失败
+      if (!L.liveOnly && !L.missing) L.missing = true;     // liveOnly 是预期跳过，不算加载失败
     }
   }
-  await addCityLabels();
+  await addCityLabels(dataMap.get('cities'));
   buildLayerPanel();                       // 缺层信息回填面板
   applyBasemap(curBm);                     // 补应用加载期间已选中的底图 + 校正面层不透明度
   document.getElementById('spin').style.display = 'none';
 }
 
 /* ───────── 城市注记（DOM Marker，离线可用） ───────── */
-async function addCityLabels() {
+async function addCityLabels(prefetched) {
   try {
-    const fc = await geoFor({ file: 'cities' });
+    const fc = prefetched || await geoForT({ file: 'cities' });
     fc.features.forEach(f => {
       const el = document.createElement('div');
       el.className = 'lbl';
@@ -409,13 +485,18 @@ function buildLayerPanel() {
 /* ───────── 图例 ───────── */
 function buildLegend() {
   const box = document.getElementById('legend');
+  const a = (REGION && REGION.admin) || { level1: '县市', level2: '乡镇' };
+  const popSrc = RG_CODE === 'fj' ? 'GHSL GHS-POP E2020 分区统计' : 'WorldPop 2020 聚合';
   const brk = [['< 10 万', '#fff5eb'], ['10–30 万', '#fee0c6'], ['30–60 万', '#fdae6b'],
                ['60–150 万', '#fd8d3c'], ['150–250 万', '#e31a1c'], ['> 250 万', '#8c0d0e']];
-  let html = '<div class="sub">县市人口（WorldPop 2020 聚合）</div>';
+  let html = `<div class="sub">${a.level1}人口（${popSrc}）</div>`;
   brk.forEach(([t, c]) => html += `<div class="row"><i style="background:${c}"></i>${t}</div>`);
   html += '<div class="sub" style="margin-top:8px">其他要素</div>';
-  [['#2b3f5c', '县市界'], ['#69a8cc', '河川'], ['#d9662b', '高速公路'], ['#b32d2d', '主要城市'], ['#6f4fb0', '事件点']]
+  [['#2b3f5c', `${a.level1}界`], ['#69a8cc', '河川'], ['#d9662b', '高速公路'], ['#b32d2d', '主要城市']]
     .forEach(([c, t]) => html += `<div class="row"><i style="background:${c}"></i>${t}</div>`);
+  html += '<div class="sub" style="margin-top:8px">事件主题（GDELT 根类，▶ 可播放回放）</div>';
+  Object.entries(THEME_COLORS).forEach(([t, c]) => { html += `<div class="row"><i class="dot" style="background:${c}"></i>${t}</div>`; });
+  html += '<div class="row"><i class="dot" style="background:rgba(111,79,176,.22);border-color:rgba(111,79,176,.35)"></i>低透明大点=省点兜底</div>';
   box.innerHTML = html;
 }
 
@@ -447,24 +528,74 @@ function applyTimeline() {
   }
 }
 
+/* 时间轴播放：自起点逐月"累积回放"事件（自动打开事件层）；到尾按「循环」设置重播或停住。
+ * 播放中用户拖滑块会暂停回放，避免人机争抢同一根轴 */
+let tlTimer = null;
+function tlStop() {
+  clearInterval(tlTimer); tlTimer = null;
+  document.getElementById('tlPlay').textContent = '▶ 播放';
+}
+function tlPlay() {
+  if (tlTimer) return tlStop();
+  const evL = LAYERS.find(L => L.id === 'events');
+  if (!evL || evL.missing || evL.liveOnly) { setStatus('事件层未加载：离线模式请确认快照含 events.geojson，实时模式需 :8600 服务'); return; }
+  if (!map.getLayer('events')) {
+    /* 加载窗口内点击（events 是最后几个入图的层）：轮询等它就绪后自动开播，而不是静默放弃 */
+    setStatus('事件层加载中，就绪后自动开播…');
+    let tries = 0;
+    const chk = () => {
+      if (map.getLayer('events')) { setStatus(''); tlPlay(); return; }
+      if (++tries > 100) { setStatus('事件层未加载：离线模式请确认快照含 events.geojson，实时模式需 :8600 服务'); return; }
+      setTimeout(chk, 150);
+    };
+    chk();
+    return;
+  }
+  evL.on = true;
+  const cb = document.querySelector('#layerList input[data-id="events"]'); if (cb) cb.checked = true;
+  map.setLayoutProperty('events', 'visibility', 'visible');
+  const lo = document.getElementById('tlMin'), hi = document.getElementById('tlMax');
+  lo.value = 0; hi.value = 0; applyTimeline();
+  document.getElementById('tlPlay').textContent = '⏸ 暂停';
+  tlTimer = setInterval(() => {
+    let i = +hi.value + 1;
+    if (i >= MONTHS.length) {
+      if (document.getElementById('tlLoop').checked) i = 0;
+      else { applyTimeline(); tlStop(); return; }
+    }
+    hi.value = i; applyTimeline();
+  }, +document.getElementById('tlSpeed').value);
+}
+
 /* ───────── 数据说明 ───────── */
 async function fillSrcNote() {
   const box = document.getElementById('srcNote');
   try {
-    const r = await fetch('data/manifest.json');
+    const r = await fetch(`${DATA_DIR}/manifest.json`);
     manifest = await r.json();
     const n = Object.keys(manifest.layers).length;
-    box.innerHTML = `离线快照 ${n} 层 / ${(manifest.total_bytes / 1048576).toFixed(2)} MB，生成于 ${manifest.generated}<br>` +
+    box.innerHTML = `当前区域：${(REGION && REGION.name_zh) || '中国台湾省'} · 离线快照 ${n} 层 / ${(manifest.total_bytes / 1048576).toFixed(2)} MB，生成于 ${manifest.generated}<br>` +
       `实时模式下几何改由 PostGIS ${MODE === 'live' ? '即时出 MVT' : '—'}；字段字典见仓库 data/README.md`;
   } catch (e) { box.textContent = '快照清单未生成：运行 python pipeline\\export_web_data.py'; }
 }
 
 /* ───────── 问答与定位 ───────── */
-/* 示例问句按模式给：离线快照事件覆盖 2024-09…2026-08，事件类示例须落在覆盖期内 */
-const EXAMPLES_LIVE = ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
-  '台东县的关注度趋势', '彰化这个名字因何而来？'];
-const EXAMPLES_OFF = ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
-  '2026年3月发生了什么事件？', '彰化这个名字因何而来？'];
+/* 示例问句按区域+模式给：离线快照事件覆盖 2024-09…2026-08，事件类示例须落在覆盖期内。
+ * 地名类示例须能在当前区域快照中检索到（TW=县市/山峰，FJ=地级市/GHSL 分区） */
+const EXAMPLES = {
+  tw: {
+    live: ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
+      '台东县的关注度趋势', '彰化这个名字因何而来？'],
+    off: ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
+      '2026年3月发生了什么事件？', '彰化这个名字因何而来？'],
+  },
+  fj: {
+    live: ['厦门有多少港口？', '福州人口多少？', '武夷山在哪里，多高？', '2025年5月发生了什么事件？',
+      '漳州市的关注度趋势', '泉州这个名字因何而来？'],
+    off: ['厦门有多少港口？', '福州人口多少？', '武夷山在哪里，多高？', '2025年5月发生了什么事件？',
+      '2026年3月发生了什么事件？', '漳州在哪里？'],
+  },
+};
 function bindUI() {
   const sel = document.getElementById('basemap');
   sel.addEventListener('change', () => applyBasemap(sel.value));
@@ -476,10 +607,12 @@ function bindUI() {
   document.getElementById('fullTiles').addEventListener('change', () => {
     const v = sel.value; if (v !== 'none') applyBasemap(v);   // ESRI 源不受全量瓦片开关影响
   });
-  document.getElementById('resetView').addEventListener('click', () => map.flyTo({ center: ISLAND.center, zoom: ISLAND.zoom }));
+  const home = (REGION && REGION.map) || ISLAND;
+  document.getElementById('resetView').addEventListener('click', () => map.flyTo({ center: home.center, zoom: home.zoom }));
 
   const ex = document.getElementById('examples');
-  (MODE === 'live' ? EXAMPLES_LIVE : EXAMPLES_OFF).forEach(t => {
+  const exl = EXAMPLES[RG_CODE] || EXAMPLES.tw;
+  (MODE === 'live' ? exl.live : exl.off).forEach(t => {
     const b = document.createElement('button');
     b.className = 'chip'; b.textContent = t;
     b.addEventListener('click', () => { document.getElementById('q').value = t; ask(); });
@@ -487,6 +620,10 @@ function bindUI() {
   });
   document.getElementById('ask').addEventListener('click', ask);
   document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+  document.getElementById('tlPlay').addEventListener('click', tlPlay);
+  document.getElementById('tlSpeed').addEventListener('change', () => { if (tlTimer) { tlStop(); tlPlay(); } });
+  [document.getElementById('tlMin'), document.getElementById('tlMax')].forEach(el =>
+    el.addEventListener('pointerdown', () => { if (tlTimer) tlStop(); }));   // 人工接管即暂停回放
   applyTimeline();
 }
 
@@ -697,6 +834,10 @@ async function initHazard() {
   document.querySelectorAll('.tab').forEach(t =>
     t.addEventListener('click', () => switchPane(t.dataset.pane)));
   const out = document.getElementById('hzOut');
+  if (RG_CODE !== 'tw') {
+    out.innerHTML = '<p class="placeholder">地形与灾害工作台为台湾区域口径（tw.dem_zonal_stats，70m SRTM 派生层）；福建区域 DEM 派生层未构建，如实标注缺口、不作推测填补。</p>';
+    return;
+  }
   if (MODE !== 'live') {
     out.innerHTML = '<p class="placeholder">该工作台需实时模式：请先启动 server/rag_server.py（:8600）。</p>';
     return;
@@ -765,6 +906,46 @@ function hzLocate() {
   const u = HZ_META && HZ_META.units.find(x => x.name === unit);
   if (!u || u.lat == null) return;
   map.flyTo({ center: [u.lon, u.lat], zoom: 9, duration: 900 });
+}
+
+/* ───────── 开场导览（首次自动显示，可跳过；顶栏「使用导览」随时重开） ───────── */
+const INTRO_KEY = 'bw_intro';
+const INTRO_STEPS = [
+  { t: '① 左栏 · 图层与图例', d: '勾选图层即加载，与 QGIS 插件同源同口径；下方图例含人口分级与<b>事件主题配色</b>。「事件时间轴」支持 <b>▶ 逐月回放动画</b>，看事件在地图上随时间生长。' },
+  { t: '② 中间 · 地图', d: '默认本项目<b>自渲底图</b>（完全离线可用）；右上角可切 <b>Esri 在线影像</b>对照、体验「太空→街道」俯冲演示。顶栏可一键切换<b>台湾 / 福建</b>区域快照（R2 区域模板化）。' },
+  { t: '③ 右栏 · 地志智询', d: '离线模式支持本地<b>地名检索</b>与「年月+事件」式提问；启动 RAG 服务（:8600）即<b>自然语言问答</b>并把答案实体落图定位。「地形与灾害」页签为台湾区域口径，其他区域如实标注缺口。' },
+];
+let introIdx = 0;
+function introRender() {
+  const s = INTRO_STEPS[introIdx];
+  document.getElementById('introTitle').textContent = s.t;
+  document.getElementById('introBody').innerHTML = s.d;
+  document.getElementById('introDots').innerHTML =
+    INTRO_STEPS.map((_, i) => `<i class="${i === introIdx ? 'on' : ''}">●</i>`).join('');
+  document.getElementById('introPrev').disabled = introIdx === 0;
+  document.getElementById('introNext').textContent = introIdx === INTRO_STEPS.length - 1 ? '完成' : '下一步';
+}
+function introShow(i) {
+  introIdx = i;
+  document.getElementById('intro').hidden = false;
+  introRender();
+}
+function introClose() {
+  document.getElementById('intro').hidden = true;
+  try { localStorage.setItem(INTRO_KEY, '1'); } catch (e) { /* 隐私模式等场景忽略 */ }
+}
+function initIntro() {
+  document.getElementById('helpBtn').addEventListener('click', () => introShow(0));
+  document.getElementById('introPrev').addEventListener('click', () => introShow(Math.max(0, introIdx - 1)));
+  document.getElementById('introNext').addEventListener('click', () => {
+    if (introIdx >= INTRO_STEPS.length - 1) introClose(); else introShow(introIdx + 1);
+  });
+  document.getElementById('introSkip').addEventListener('click', introClose);
+  document.getElementById('intro').addEventListener('click', e => { if (e.target.id === 'intro') introClose(); });  // 点遮罩关闭
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('intro').hidden) introClose(); });
+  let seen = null;
+  try { seen = localStorage.getItem(INTRO_KEY); } catch (e) { /* 忽略 */ }
+  if (!seen) introShow(0);   // 仅首次自动弹出
 }
 
 boot();
