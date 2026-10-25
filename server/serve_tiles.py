@@ -44,6 +44,8 @@ class H(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(WEB)
-    with http.server.ThreadingHTTPServer(("127.0.0.1", PORT), functools.partial(H, directory=WEB)) as s:
-        print("http://127.0.0.1:%d/  (tiles root=%s, web root=%s)" % (PORT, ROOT, WEB), flush=True)
+    # 默认只监听本机；需要队友局域网访问时设环境变量 BAODAO_HOST=0.0.0.0 再启动
+    host = os.environ.get("BAODAO_HOST", "127.0.0.1")
+    with http.server.ThreadingHTTPServer((host, PORT), functools.partial(H, directory=WEB)) as s:
+        print("http://%s:%d/  (tiles root=%s, web root=%s)" % (host, PORT, ROOT, WEB), flush=True)
         s.serve_forever()
