@@ -14,26 +14,18 @@ const API = 'http://127.0.0.1:8600';
 const TILE_HOST = 'http://127.0.0.1:8090';
 const ISLAND = { center: [121.0, 23.7], zoom: 6.6 };   // 台湾缺省视角（region.json 缺失时兜底）
 let REGION = null;   // 区域配置（data/region.json）：中心点/行政层级/时间轴口径；平移新区域只换 config/region_<code>.json
-/* 区域一键切换（R2 区域模板化）：快照目录与 URL ?region= 绑定，缺省台湾（交付主区域）。
- * 切换=带参刷新整页——数据源/口径/示例/视角随 region.json 整体更换，避免半套旧数据残留 */
-const RG_DIRS = { tw: 'data', fj: 'data_fj' };
-function rgCode() { const p = new URLSearchParams(location.search).get('region'); return RG_DIRS[p] ? p : 'tw'; }
-const RG_CODE = rgCode();
-const DATA_DIR = RG_DIRS[RG_CODE];
-function switchRegion(code) {
-  if (!RG_DIRS[code] || code === RG_CODE) return;
-  const u = new URL(location.href);
-  u.searchParams.set('region', code);
-  location.href = u.toString();
-}
+/* 离线快照目录固定为 data/（region.json 驱动中心视角/行政层级标签/时间轴口径）。
+ * 区域模板化机制保留在管线侧：新区域经 config/region_<code>.json + export_web_data.py --region 平移，
+ * 导出其快照目录即可，网页端无需改动 */
+const DATA_DIR = 'data';
 const POP_STEP = ['step', ['coalesce', ['get', 'pop'], 0],
   '#fff5eb', 100000, '#fee0c6', 300000, '#fdae6b', 600000, '#fd8d3c', 1500000, '#e31a1c', 2500000, '#8c0d0e'];
 
 const wan = v => (v == null || isNaN(v)) ? '—' : (v >= 10000 ? (v / 10000).toFixed(1) + ' 万' : String(Math.round(v)));
 const num = v => (v == null || isNaN(v)) ? '—' : Number(v).toLocaleString('zh-CN');
 
-/* 事件主题配色（GDELT 关键词归类根主题）：「其他/综合」保持品牌紫——TW 快照主题统一为「其他」故全紫，
- * FJ 快照十类分色。兜底点（GDELT 未落到城市、回退省级）统一降透明退居背景，真实落点醒目 */
+/* 事件主题配色（GDELT 关键词归类根主题）：「其他/综合」保持品牌紫。
+ * 兜底点（GDELT 未落到城市、回退省级）统一降透明退居背景，真实落点醒目 */
 const THEME_COLORS = {
   '综合': '#9467bd', '教育科技': '#1f77b4', '经济发展': '#ff7f0e', '文旅活动': '#2ca02c',
   '生态环境': '#8c564b', '台风': '#17becf', '两岸交流': '#e377c2', '体育赛事': '#bcbd22',
@@ -134,8 +126,8 @@ function circlePaint(L) {
   const base = { 'circle-color': L.color, 'circle-radius': rad, 'circle-opacity': 0.88,
            'circle-stroke-color': '#fff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 12, 1.4] };
   if (!L.themed) return base;
-  /* 兜底点判定：FJ 快照兜底为省名精确值（place==='福建'）；TW 快照兜底为 'Taiwan' 或含 '(general)' 的
-   * GeoNames 串。兜底点低透明+放大，真实城市落点保持原样式——一眼区分"落到了城市"与"只落到省" */
+  /* 兜底点判定：TW 快照兜底为 'Taiwan' 或含 'general' 的 GeoNames 串（GDELT 未落到城市、回退省级）。
+   * 兜底点低透明+放大，真实城市落点保持原样式——一眼区分"落到了城市"与"只落到省" */
   const fb = ['any', ['==', ['get', 'place'], (REGION && REGION.short_zh) || ''],
     ['==', ['get', 'place'], 'Taiwan'], ['>', ['index-of', 'general', ['get', 'place']], -1]];
   const pairs = Object.entries(THEME_COLORS).flatMap(([t, c]) => [t, c]);
@@ -234,7 +226,6 @@ function applyBasemap(v) {
 /* 太空→街道 俯冲演示：Esri 高分影像上从全域视角连续飞到代表街区（对应样例视频效果） */
 const DIVE_TARGET = {
   tw: { center: [121.5654, 25.0330], zoom: 17, label: '台北 101 周边街区' },
-  fj: { center: [119.6426, 26.0810], zoom: 16, label: '福州三坊七巷历史街区' },
 };
 let diveBak = null;
 function diveDemo() {
@@ -254,7 +245,7 @@ function diveDemo() {
     labelMarkers.forEach(m => { if (m.getElement()) m.getElement().style.display = ''; });
     diveBak = null;
   });
-  const t = DIVE_TARGET[RG_CODE] || DIVE_TARGET.tw;
+  const t = DIVE_TARGET.tw;
   map.flyTo({ center: t.center, zoom: t.zoom, duration: 9000, curve: 1.42, essential: true });
 }
 
@@ -319,7 +310,7 @@ async function loadRegion() {
   MONTHS = buildMonths(tl.start, tl.end);
   applyRegionToLayers();
 }
-/* 行政层级叫法按区域配置改写图层标签与弹窗标题（台湾=县市/乡镇，福建=地级市/县区…） */
+/* 行政层级叫法按 region.json 配置改写图层标签与弹窗标题（台湾=县市/乡镇） */
 function applyRegionToLayers() {
   const a = (REGION && REGION.admin) || { level1: '县市', level2: '乡镇' };
   const L1 = a.level1 || '县市', L2 = a.level2 || '乡镇';
@@ -335,15 +326,11 @@ function applyRegionToLayers() {
 /* ───────── 初始化 ───────── */
 async function boot() {
   await loadRegion();
-  // 区域化界面铭牌：切换器高亮、副标题、页标题、俯冲按钮提示、示例问句均随当前区域
-  document.querySelectorAll('#rgSwitch button').forEach(b => {
-    b.classList.toggle('on', b.dataset.rg === RG_CODE);
-    b.addEventListener('click', () => switchRegion(b.dataset.rg));
-  });
+  // 区域化界面铭牌：副标题、页标题、俯冲按钮提示随 region.json 配置
   document.getElementById('brandSub').textContent =
-    `${(REGION && REGION.name_zh) || '中国台湾省'}人文地理地志库 · ${RG_CODE === 'tw' ? 'QGIS 插件同源数据' : '区域模板化平移验证（R2 实跑）'} · 网页查看端`;
+    `${(REGION && REGION.name_zh) || '中国台湾省'}人文地理地志库 · QGIS 插件同源数据 · 网页查看端`;
   document.title = `宝岛文舆 · 开源 GIS 地志智询系统 — 网页查看端（${(REGION && REGION.short_zh) || '台湾'}）`;
-  const dv = DIVE_TARGET[RG_CODE] || DIVE_TARGET.tw;
+  const dv = DIVE_TARGET.tw;
   const diveBtn0 = document.getElementById('diveBtn');
   if (diveBtn0) diveBtn0.title = `从全域视角连续俯冲到${dv.label}（Esri 高分影像，约 9 秒）`;
   MODE = await detectMode();
@@ -486,7 +473,7 @@ function buildLayerPanel() {
 function buildLegend() {
   const box = document.getElementById('legend');
   const a = (REGION && REGION.admin) || { level1: '县市', level2: '乡镇' };
-  const popSrc = RG_CODE === 'fj' ? 'GHSL GHS-POP E2020 分区统计' : 'WorldPop 2020 聚合';
+  const popSrc = 'WorldPop 2020 聚合';
   const brk = [['< 10 万', '#fff5eb'], ['10–30 万', '#fee0c6'], ['30–60 万', '#fdae6b'],
                ['60–150 万', '#fd8d3c'], ['150–250 万', '#e31a1c'], ['> 250 万', '#8c0d0e']];
   let html = `<div class="sub">${a.level1}人口（${popSrc}）</div>`;
@@ -589,12 +576,6 @@ const EXAMPLES = {
     off: ['宜兰有多少港口？', '新北市人口多少？', '玉山在哪里，多高？', '2025年5月发生了什么事件？',
       '2026年3月发生了什么事件？', '彰化这个名字因何而来？'],
   },
-  fj: {
-    live: ['厦门有多少港口？', '福州人口多少？', '武夷山在哪里，多高？', '2025年5月发生了什么事件？',
-      '漳州市的关注度趋势', '泉州这个名字因何而来？'],
-    off: ['厦门有多少港口？', '福州人口多少？', '武夷山在哪里，多高？', '2025年5月发生了什么事件？',
-      '2026年3月发生了什么事件？', '漳州在哪里？'],
-  },
 };
 function bindUI() {
   const sel = document.getElementById('basemap');
@@ -611,7 +592,7 @@ function bindUI() {
   document.getElementById('resetView').addEventListener('click', () => map.flyTo({ center: home.center, zoom: home.zoom }));
 
   const ex = document.getElementById('examples');
-  const exl = EXAMPLES[RG_CODE] || EXAMPLES.tw;
+  const exl = EXAMPLES.tw;
   (MODE === 'live' ? exl.live : exl.off).forEach(t => {
     const b = document.createElement('button');
     b.className = 'chip'; b.textContent = t;
@@ -834,10 +815,6 @@ async function initHazard() {
   document.querySelectorAll('.tab').forEach(t =>
     t.addEventListener('click', () => switchPane(t.dataset.pane)));
   const out = document.getElementById('hzOut');
-  if (RG_CODE !== 'tw') {
-    out.innerHTML = '<p class="placeholder">地形与灾害工作台为台湾区域口径（tw.dem_zonal_stats，70m SRTM 派生层）；福建区域 DEM 派生层未构建，如实标注缺口、不作推测填补。</p>';
-    return;
-  }
   if (MODE !== 'live') {
     out.innerHTML = '<p class="placeholder">该工作台需实时模式：请先启动 server/rag_server.py（:8600）。</p>';
     return;
@@ -912,7 +889,7 @@ function hzLocate() {
 const INTRO_KEY = 'bw_intro';
 const INTRO_STEPS = [
   { t: '① 左栏 · 图层与图例', d: '勾选图层即加载，与 QGIS 插件同源同口径；下方图例含人口分级与<b>事件主题配色</b>。「事件时间轴」支持 <b>▶ 逐月回放动画</b>，看事件在地图上随时间生长。' },
-  { t: '② 中间 · 地图', d: '默认本项目<b>自渲底图</b>（完全离线可用）；右上角可切 <b>Esri 在线影像</b>对照、体验「太空→街道」俯冲演示。顶栏可一键切换<b>台湾 / 福建</b>区域快照（R2 区域模板化）。' },
+  { t: '② 中间 · 地图', d: '默认本项目<b>自渲底图</b>（完全离线可用）；右上角可切 <b>Esri 在线影像</b>对照、体验「太空→街道」俯冲演示。' },
   { t: '③ 右栏 · 地志智询', d: '离线模式支持本地<b>地名检索</b>与「年月+事件」式提问；启动 RAG 服务（:8600）即<b>自然语言问答</b>并把答案实体落图定位。「地形与灾害」页签为台湾区域口径，其他区域如实标注缺口。' },
 ];
 let introIdx = 0;

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """export_web_data.py — 导出 Web 查看端离线模式用的 GeoJSON 快照。
 
-用法：python pipeline\\export_web_data.py [--region tw|fj|…] [--out 目录]
+用法：python pipeline\\export_web_data.py [--region <code>|tw|…] [--out 目录]
 产物：<out>\\*.geojson + <out>\\manifest.json（记录条数/字节/生成时间）
       + <out>\\region.json（网页查看端启动时读取：中心点/行政层级/时间轴口径）
-      --out 缺省 web\\data；平移验证其他区域时建议另指目录（如 web\\data_fj），
+      --out 缺省 web\\data；平移验证其他区域时建议另指目录（如 web\\data_<code>），
       避免覆盖交付主区域（tw）已发布的离线快照。
 区域模板化：库名、模式前缀、事件时间轴范围全部来自 config/region_<code>.json；
       平移新区域只需新增一份配置并用 --region（或环境变量 BW_REGION）指定。
