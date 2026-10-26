@@ -156,10 +156,11 @@ function layerObj(L) {
 }
 
 /* ───────── 底图 ───────── */
-/* 在线对照底图：Esri 公开 XYZ（ArcGIS Online 免 Key 直连，瓦片行列序为 {z}/{y}/{x}，勿写成 {z}/{x}/{y}）
+/* 在线对照底图：Esri / OSM 公开 XYZ 端点（客户端实时引用，瓦片行列序以各端点官方文档为准）
+ * Esri 为 {z}/{y}/{x}，OSM 为 {z}/{x}/{y}，勿混写；
  * 许可口径：仅在线调用显示，不落盘、不做本地缓存分发；署名写入页脚 #bmSrc 与报告《第三方资源使用清单》。 */
 const LOCAL_NOTE = '底图：本项目自渲 XYZ 瓦片（数据源 GeoNames / © OpenStreetMap contributors (ODbL) / WorldPop / GDELT / NASA SRTM，均按各自许可署名）';
-const ESRI = {
+const ONLINE = {
   satellite: {
     tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
     note: '底图：Esri World Imagery 在线卫星影像（Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community），在线引用、不落盘分发',
@@ -168,10 +169,14 @@ const ESRI = {
     tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
     note: '底图：Esri World Street Map 在线街道图（© Esri, HERE, Garmin, USGS, METI, Esri China (Hong Kong), © OpenStreetMap contributors），在线引用、不落盘分发',
   },
+  osm: {
+    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+    note: '底图：OpenStreetMap 标准图（© OpenStreetMap contributors，ODbL），在线引用、不落盘分发',
+  },
 };
 
 function basemapTiles(kind) {
-  if (ESRI[kind]) return ESRI[kind].tiles;               // 在线对照底图：与全量瓦片开关无关
+  if (ONLINE[kind]) return ONLINE[kind].tiles;             // 在线对照底图：与全量瓦片开关无关
   const useFull = MODE === 'live' && document.getElementById('fullTiles').checked;
   const host = useFull ? TILE_HOST + '/' : '';
   return [`${host}${kind}/{z}/{x}/{y}.png`];
@@ -202,7 +207,7 @@ function applyBasemap(v) {
   const noteEl = document.getElementById('bmSrc');
   if (!map || !map.getSource('basemap-self')) {           // 地图尚未 setupLayers 完成：只记状态，等加载后补应用
     curBm = v;
-    if (noteEl) noteEl.textContent = v === 'none' ? '底图：已关闭（仅显示业务图层）' : (ESRI[v] ? ESRI[v].note : LOCAL_NOTE);
+    if (noteEl) noteEl.textContent = v === 'none' ? '底图：已关闭（仅显示业务图层）' : (ONLINE[v] ? ONLINE[v].note : LOCAL_NOTE);
     return;
   }
   curBm = v;
@@ -213,13 +218,13 @@ function applyBasemap(v) {
     dimFills(false);
     return;
   }
-  const online = !!ESRI[v];
+  const online = !!ONLINE[v];
   map.setLayoutProperty('basemap-self', 'visibility', online ? 'none' : 'visible');
   map.setLayoutProperty('basemap-online', 'visibility', online ? 'visible' : 'none');
   map.getSource(online ? 'basemap-online' : 'basemap-self').setTiles(basemapTiles(v));
   // Esri 高分影像在台湾区域可到 z19；自产瓦片实体到 z13（z14 全量），超出层级走 overzoom 平滑放大
   map.setMaxZoom(online ? 19 : 14);
-  if (noteEl) noteEl.textContent = online ? ESRI[v].note : LOCAL_NOTE;
+  if (noteEl) noteEl.textContent = online ? ONLINE[v].note : LOCAL_NOTE;
   dimFills(online);
 }
 
@@ -251,7 +256,7 @@ function diveDemo() {
 
 /* 在线底图可达性探测：用 <img> 而非 fetch（瓦片服务无 CORS 头，fetch 会误判不可达） */
 function probeEsri(ms) {
-  const url = ESRI.satellite.tiles[0].replace('{z}', '3').replace('{y}', '3').replace('{x}', '6');
+  const url = ONLINE.satellite.tiles[0].replace('{z}', '3').replace('{y}', '3').replace('{x}', '6');
   return new Promise(resolve => {
     const img = new Image();
     let done = false;
@@ -263,12 +268,14 @@ function probeEsri(ms) {
   });
 }
 
-/* 网络不可达时禁用两个在线选项并改文案，避免答辩现场切到空白瓦片 */
+/* 网络不可达时禁用 Esri 在线选项并改文案，避免答辩现场切到空白瓦片。
+ * OSM 与 Esri 不同源、可达性互不代理：Esri 探测失败不禁用 OSM（OSM 自有运行期错误兜底） */
 async function gateOnlineBasemaps() {
   const sel = document.getElementById('basemap');
   const ok = await probeEsri(3500);
   if (ok) return;
-  for (const v of Object.keys(ESRI)) {
+  for (const v of Object.keys(ONLINE)) {
+    if (v === 'osm') continue;
     const o = sel.querySelector(`option[value="${v}"]`);
     if (!o) continue;
     o.disabled = true;
@@ -277,17 +284,17 @@ async function gateOnlineBasemaps() {
   const sw = document.getElementById('bmSwitch');
   if (sw) {
     sw.classList.add('off');
-    sw.title = '在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
+    sw.title = 'Esri 在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
     sw.querySelectorAll('input').forEach(i => { i.disabled = true; });
   }
-  sel.title = '在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
+  sel.title = 'Esri 在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
 }
 
 /* 在线底图运行期兜底：5 秒内连续 3 片加载失败即回落自产地形底图，避免现场长时间空白 */
 let bmErr = 0, bmErrTs = 0;
 function guardBasemapErrors() {
   map.on('error', e => {
-    if (!e || e.sourceId !== 'basemap-online' || !ESRI[curBm]) return;
+    if (!e || e.sourceId !== 'basemap-online' || !ONLINE[curBm]) return;
     const now = Date.now();
     if (now - bmErrTs > 5000) bmErr = 0;
     bmErrTs = now;
@@ -377,14 +384,14 @@ async function setupLayers() {
   // 深 zoom 会按缺失层级直接请求瓦片（自产 z14+ 无瓦 → 空白；Esri z20+ 无瓦 → 触发错误兜底）
   map.addSource('basemap-self', { type: 'raster', tiles: basemapTiles('terrain'), tileSize: 256,
     maxzoom: 13, bounds: [-180, -85, 180, 85] });
-  map.addSource('basemap-online', { type: 'raster', tiles: ESRI.satellite.tiles, tileSize: 256,
+  map.addSource('basemap-online', { type: 'raster', tiles: ONLINE.satellite.tiles, tileSize: 256,
     maxzoom: 19, bounds: [-180, -85, 180, 85] });
   const bmInit = document.getElementById('basemap').value;
   map.addLayer({ id: 'basemap-self', type: 'raster', source: 'basemap-self',
-    layout: { visibility: (!ESRI[bmInit] && bmInit !== 'none') ? 'visible' : 'none' },
+    layout: { visibility: (!ONLINE[bmInit] && bmInit !== 'none') ? 'visible' : 'none' },
     paint: { 'raster-resampling': 'nearest' } });        // 自产线划瓦片 overzoom 时保持边缘锐利
   map.addLayer({ id: 'basemap-online', type: 'raster', source: 'basemap-online',
-    layout: { visibility: ESRI[bmInit] ? 'visible' : 'none' } });
+    layout: { visibility: ONLINE[bmInit] ? 'visible' : 'none' } });
 
   // 先几何后面：fill → line → circle（数组顺序即叠放次序）
   // 离线快照并行预取（geoForRetry 带超时+重试）：任何一个请求挂起都只影响本层，不再拖死整图加载
@@ -413,6 +420,37 @@ async function setupLayers() {
   buildLayerPanel();                       // 缺层信息回填面板
   applyBasemap(curBm);                     // 补应用加载期间已选中的底图 + 校正面层不透明度
   document.getElementById('spin').style.display = 'none';
+  runShot();                               // URL ?shot= 镜头直达：SETUP 完成后一次性摆好录制状态
+}
+
+/* ───────── 镜头直达（?shot=<name>）：为比赛视频录制预设状态，降低废片率 ─────────
+ * 用法：index.html?shot=dive / ?shot=osm / ?shot=street / ?shot=events / ?shot=qa …
+ * 各镜头把底图 + 视角 + 图层 + 问答一次性摆好；同视角不同底图可出分屏对照素材。 */
+const SHOTS = {
+  dive:        () => diveDemo(),                                                        // 太空→街道俯冲（Esri 高分影像）
+  osm:         () => { applyBasemap('osm');       map.jumpTo({ center: [121.5654, 25.0330], zoom: 15 }); },  // OSM 标准图 · 台北街区（分屏对照素材）
+  esristreet:  () => { applyBasemap('esristreet'); map.jumpTo({ center: [121.5654, 25.0330], zoom: 15 }); },  // Esri 街道图 · 同视角（分屏对照素材）
+  satellite:   () => { applyBasemap('satellite'); map.jumpTo(ISLAND); },                 // Esri 卫星 · 全域
+  street:      () => { applyBasemap('street');    map.jumpTo(ISLAND); },                 // 自产街道图 · 全域（自渲线划展示）
+  terrain:     () => { applyBasemap('terrain');  map.jumpTo(ISLAND); },                 // 自产地形晕渲 · 全域（默认开场）
+  events:      () => {                                                                 // 事件时间轴：打开事件层并从起点自动播放
+    const cb = document.querySelector('#layerList input[data-id="events"]');
+    if (cb && !cb.checked) cb.checked = true;
+    const evL = LAYERS.find(L => L.id === 'events');
+    if (evL) { evL.on = true; if (map.getLayer('events')) map.setLayoutProperty('events', 'visibility', 'visible'); }
+    document.getElementById('tlMin').value = 0;
+    applyTimeline();
+    tlPlay();
+  },
+  qa:          async () => {                                                           // 问答演示：自动提问并落图定位
+    document.getElementById('q').value = '玉山在哪里，多高？';
+    await ask();
+  },
+};
+function runShot() {
+  const s = new URLSearchParams(location.search).get('shot');
+  const fn = s && SHOTS[s];
+  if (fn) { console.log('[shot]', s); fn(); }
 }
 
 /* ───────── 城市注记（DOM Marker，离线可用） ───────── */
@@ -586,7 +624,7 @@ function bindUI() {
   const diveBtn = document.getElementById('diveBtn');
   if (diveBtn) diveBtn.addEventListener('click', diveDemo);
   document.getElementById('fullTiles').addEventListener('change', () => {
-    const v = sel.value; if (v !== 'none') applyBasemap(v);   // ESRI 源不受全量瓦片开关影响
+    const v = sel.value; if (v !== 'none') applyBasemap(v);   // 在线源不受全量瓦片开关影响
   });
   const home = (REGION && REGION.map) || ISLAND;
   document.getElementById('resetView').addEventListener('click', () => map.flyTo({ center: home.center, zoom: home.zoom }));

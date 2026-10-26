@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>宝岛文舆 · 全球地名检索（姊妹原型）</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<script src="lib/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; font-size: 13px; color: #333; }
+  #app { display: flex; height: 100vh; }
+
+  /* ===== 左侧面板 ===== */
+  #panel {
+    width: 380px; min-width: 380px; height: 100%;
+    display: flex; flex-direction: column;
+    background: #fff; border-right: 1px solid #ddd;
+    box-shadow: 2px 0 8px rgba(0,0,0,.08); z-index: 1000;
+  }
+  #panel-header {
+    padding: 14px 16px; background: linear-gradient(135deg, #1a3a5c, #2c5f8a);
+    color: #fff;
+  }
+  #panel-header h1 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+  #panel-header .sub { font-size: 11px; opacity: .75; }
+
+  /* 搜索框 */
+  #search-wrap { padding: 12px 16px; border-bottom: 1px solid #eee; position: relative; }
+  #search-box {
+    width: 100%; padding: 9px 36px 9px 12px;
+    border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+    outline: none; transition: border-color .2s;
+  }
+  #search-box:focus { border-color: #2c5f8a; box-shadow: 0 0 0 3px rgba(44,95,138,.15); }
+  #search-btn {
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; font-size: 16px; color: #666;
+  }
+  #suggest-dropdown {
+    position: absolute; left: 16px; right: 16px; top: 100%;
+    background: #fff; border: 1px solid #ddd; border-top: none;
+    border-radius: 0 0 6px 6px; max-height: 240px; overflow-y: auto;
+    display: none; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,.12);
+  }
+  #suggest-dropdown .s-item {
+    padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f5f5f5;
+  }
+  #suggest-dropdown .s-item:hover { background: #f0f6fc; }
+  #suggest-dropdown .s-item .name { font-weight: 500; }
+  #suggest-dropdown .s-item .meta { font-size: 11px; color: #999; margin-top: 2px; }
+
+  /* 过滤选项 */
+  #filter-bar {
+    padding: 8px 16px; border-bottom: 1px solid #eee;
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  #filter-bar label { font-size: 12px; color: #666; }
+  #filter-bar select {
+    padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;
+  }
+
+  /* 结果列表 */
+  #results-wrap { flex: 1; overflow-y: auto; }
+  #results-header {
+    padding: 8px 16px; background: #f8f9fa; font-size: 12px; color: #666;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0;
+  }
+  .result-item {
+    padding: 10px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer;
+    transition: background .15s;
+  }
+  .result-item:hover { background: #f0f6fc; }
+  .result-item.active { background: #e3f0fd; border-left: 3px solid #2c5f8a; }
+  .result-item .r-name { font-size: 14px; font-weight: 600; color: #1a3a5c; }
+  .result-item .r-meta { font-size: 11px; color: #888; margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .result-item .r-meta span { display: inline-flex; align-items: center; gap: 3px; }
+  .badge {
+    display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;
+  }
+  .badge-cn { background: #fde8e8; color: #c0392b; }
+  .badge-pri1 { background: #fde8e8; color: #c0392b; }
+  .badge-pri2 { background: #fff3cd; color: #856404; }
+  .badge-pri3 { background: #d4edda; color: #155724; }
+  .badge-fclass { background: #e8e8e8; color: #555; }
+
+  /* 详情面板 */
+  #detail-panel {
+    border-top: 2px solid #2c5f8a; max-height: 45%; overflow-y: auto;
+    display: none;
+  }
+  #detail-header {
+    padding: 10px 16px; background: #f0f6fc; display: flex;
+    justify-content: space-between; align-items: center;
+  }
+  #detail-header h3 { font-size: 15px; color: #1a3a5c; }
+  #detail-close { background: none; border: none; cursor: pointer; font-size: 18px; color: #999; }
+  #detail-body { padding: 12px 16px; }
+  .detail-row { display: flex; margin-bottom: 6px; font-size: 12px; }
+  .detail-row .label { width: 80px; color: #888; flex-shrink: 0; }
+  .detail-row .value { color: #333; flex: 1; }
+  .alias-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .alias-tag {
+    padding: 2px 8px; background: #f0f0f0; border-radius: 10px; font-size: 11px;
+  }
+  .alias-tag.zh { background: #fde8e8; color: #c0392b; }
+  .alias-tag.en { background: #e3f0fd; color: #1a3a5c; }
+
+  /* ===== 地图 ===== */
+  #map { flex: 1; height: 100%; }
+  .leaflet-popup-content { font-size: 12px; line-height: 1.5; }
+  .leaflet-popup-content b { color: #1a3a5c; }
+
+  /* 状态提示 */
+  #status-bar {
+    padding: 6px 16px; background: #f8f9fa; border-top: 1px solid #eee;
+    font-size: 11px; color: #999; display: flex; justify-content: space-between;
+  }
+  .loading { color: #2c5f8a; }
+  .error { color: #c0392b; }
+
+  /* 自定义 marker */
+  .marker-cn {
+    background: #c0392b; width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 0 6px rgba(192,57,43,.6);
+  }
+  .marker-normal {
+    background: #2c5f8a; width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 0 4px rgba(44,95,138,.5);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 左侧面板 -->
+  <div id="panel">
+    <div id="panel-header">
+      <h1>🌍 全球地名数据库检索</h1>
+      <div class="sub">人文态势图系统 · Gazetteer · GeoNames 1347万实体 / 1920万别名</div>
+    </div>
+
+    <div id="search-wrap">
+      <input type="text" id="search-box" placeholder="输入地名（中文/英文/拼音），如：北京、Beijing、ペキン..." autocomplete="off">
+      <button id="search-btn" title="搜索">🔍</button>
+      <div id="suggest-dropdown"></div>
+    </div>
+
+    <div id="filter-bar">
+      <label>要素类:
+        <select id="filter-fclass">
+          <option value="">全部</option>
+          <option value="P">居民地</option>
+          <option value="A">行政</option>
+          <option value="H">水文</option>
+          <option value="T">地形</option>
+          <option value="S">地点</option>
+          <option value="U">海底</option>
+          <option value="V">植被</option>
+          <option value="R">道路</option>
+          <option value="L">区域</option>
+        </select>
+      </label>
+      <label>国家:
+        <input type="text" id="filter-country" placeholder="如 CN" style="width:50px;padding:4px;border:1px solid #ccc;border-radius:4px;font-size:12px;">
+      </label>
+    </div>
+
+    <div id="results-wrap">
+      <div id="results-header">
+        <span id="results-count">输入关键词开始检索</span>
+        <span id="results-time"></span>
+      </div>
+      <div id="results-list"></div>
+    </div>
+
+    <div id="detail-panel">
+      <div id="detail-header">
+        <h3 id="detail-title">地名详情</h3>
+        <button id="detail-close">×</button>
+      </div>
+      <div id="detail-body"></div>
+    </div>
+
+    <div id="status-bar">
+      <span id="status-text">就绪</span>
+      <span>API: localhost:8089</span>
+    </div>
+  </div>
+
+  <!-- 地图 -->
+  <div id="map"></div>
+</div>
+
+<script>
+const API_BASE = 'http://localhost:8089/api/gaz';
+let map, markersLayer, currentResults = [], activeMarker = null;
+let suggestTimer = null;
+
+// ===== 初始化地图 =====
+function initMap() {
+  map = L.map('map', { zoomControl: true }).setView([30, 105], 3);
+  // 底图0：本地离线瓦片（优先，无需联网）
+  var localLayer = L.tileLayer('http://localhost:8090/street/{z}/{x}/{y}.png', {
+    attribution: '自渲街道瓦片 (© OpenStreetMap contributors, ODbL) · 宝岛文舆',
+    maxZoom: 19,
+    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  });
+  // 底图1：OpenStreetMap 标准（免费，无需 key）
+  var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors | GeoNames (CC BY 4.0)',
+    maxZoom: 19
+  });
+  // 底图2：Esri World Imagery 卫星影像（免费，无需 key）
+  var esriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri, Maxar, Earthstar Geographics · GIS User Community',
+    maxZoom: 19
+  });
+  // 底图3：Esri 街道图
+  var esriStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri',
+    maxZoom: 19
+  });
+  localLayer.addTo(map);
+  L.control.layers({
+    '本地离线瓦片': localLayer,
+    'OpenStreetMap 标准': osmLayer,
+    'Esri 卫星影像': esriLayer,
+    'Esri 街道图': esriStreet
+  }, null, { position: 'topright', collapsed: false }).addTo(map);
+  markersLayer = L.layerGroup().addTo(map);
+  map.on('click', onMapClick);
+}
+
+// ===== 状态提示 =====
+function setStatus(text, cls='') {
+  const el = document.getElementById('status-text');
+  el.textContent = text;
+  el.className = cls;
+}
+
+// ===== 自动补全 =====
+document.getElementById('search-box').addEventListener('input', function() {
+  const q = this.value.trim();
+  clearTimeout(suggestTimer);
+  if (q.length < 2) { hideSuggest(); return; }
+  suggestTimer = setTimeout(() => fetchSuggest(q), 300);
+});
+
+async function fetchSuggest(q) {
+  try {
+    const r = await fetch(`${API_BASE}/suggest?q=${encodeURIComponent(q)}&limit=8`);
+    const data = await r.json();
+    showSuggest(data.suggestions || []);
+  } catch(e) { setStatus('自动补全请求失败', 'error'); }
+}
+
+function showSuggest(items) {
+  const dd = document.getElementById('suggest-dropdown');
+  if (!items.length) { hideSuggest(); return; }
+  dd.innerHTML = items.map(s => `
+    <div class="s-item" data-name="${s.name}">
+      <div class="name">${s.name}</div>
+      <div class="meta">${s.lang || ''} ${s.src || ''}</div>
+    </div>
+  `).join('');
+  dd.style.display = 'block';
+  dd.querySelectorAll('.s-item').forEach(el => {
+    el.addEventListener('click', () => {
+      document.getElementById('search-box').value = el.dataset.name;
+      hideSuggest();
+      doSearch();
+    });
+  });
+}
+function hideSuggest() { document.getElementById('suggest-dropdown').style.display = 'none'; }
+
+// ===== 搜索 =====
+document.getElementById('search-btn').addEventListener('click', doSearch);
+document.getElementById('search-box').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { hideSuggest(); doSearch(); }
+});
+
+async function doSearch() {
+  const q = document.getElementById('search-box').value.trim();
+  if (!q) { setStatus('请输入关键词', 'error'); return; }
+  const fclass = document.getElementById('filter-fclass').value;
+  const country = document.getElementById('filter-country').value.trim();
+  let url = `${API_BASE}/search?q=${encodeURIComponent(q)}&limit=50`;
+  if (fclass) url += `&fclass=${fclass}`;
+  if (country) url += `&country=${country}`;
+
+  setStatus('检索中...', 'loading');
+  document.getElementById('results-list').innerHTML = '';
+  markersLayer.clearLayers();
+
+  try {
+    const t0 = performance.now();
+    const r = await fetch(url);
+    const data = await r.json();
+    const t1 = performance.now();
+    currentResults = data.results || [];
+    renderResults(currentResults);
+    plotResults(currentResults);
+    document.getElementById('results-count').textContent = `共 ${data.total} 条结果`;
+    document.getElementById('results-time').textContent = `${data.took_ms}ms`;
+    setStatus(`检索完成：${data.total} 条`);
+  } catch(e) {
+    setStatus('检索失败：' + e.message, 'error');
+  }
+}
+
+// ===== 渲染结果列表 =====
+function renderResults(results) {
+  const list = document.getElementById('results-list');
+  if (!results.length) { list.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">无匹配结果</div>'; return; }
+  list.innerHTML = results.map((r, i) => {
+    const priBadge = r.base_priority === 1 ? '<span class="badge badge-pri1">权威</span>' :
+                     r.base_priority === 3 ? '<span class="badge badge-pri3">开源</span>' :
+                     '<span class="badge badge-pri2">参考</span>';
+    const isCn = r.country_code === 'CN' || r.src === 'cn_official';
+    const cnBadge = isCn ? '<span class="badge badge-cn">中国</span>' : '';
+    const fclassName = {P:'居民地',A:'行政',H:'水文',T:'地形',S:'地点',U:'海底',V:'植被',R:'道路',L:'区域'}[r.fclass] || r.fclass || '';
+    return `
+      <div class="result-item" data-idx="${i}">
+        <div class="r-name">${r.name} ${priBadge} ${cnBadge}</div>
+        <div class="r-meta">
+          ${r.country_code ? `<span>🏳️ ${r.country_name || r.country_code}</span>` : ''}
+          ${r.fclass ? `<span class="badge badge-fclass">${fclassName}</span>` : ''}
+          ${r.population ? `<span>👥 ${Number(r.population).toLocaleString()}</span>` : ''}
+          ${r.latitude ? `<span>📍 ${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  list.querySelectorAll('.result-item').forEach(el => {
+    el.addEventListener('click', () => selectResult(parseInt(el.dataset.idx)));
+  });
+}
+
+// ===== 地图标点 =====
+function plotResults(results) {
+  results.forEach((r, i) => {
+    if (!r.latitude || !r.longitude) return;
+    const isCn = r.base_priority === 1 || r.src === 'cn_official';
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="${isCn ? 'marker-cn' : 'marker-normal'}"></div>`,
+      iconSize: isCn ? [16,16] : [14,14],
+      iconAnchor: isCn ? [8,8] : [7,7]
+    });
+    const marker = L.marker([r.latitude, r.longitude], { icon }).addTo(markersLayer);
+    marker.bindPopup(`
+      <b>${r.name}</b><br>
+      ${r.country_name || r.country_code || ''} ${r.fcode || ''}<br>
+      ${r.population ? '人口: ' + Number(r.population).toLocaleString() + '<br>' : ''}
+      坐标: ${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}
+    `);
+    marker.on('click', () => selectResult(i));
+    marker._idx = i;
+  });
+  if (results.length && results[0].latitude) {
+    map.setView([results[0].latitude, results[0].longitude], 8);
+  }
+}
+
+// ===== 选中结果 =====
+function selectResult(idx) {
+  const r = currentResults[idx];
+  if (!r) return;
+  document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.result-item[data-idx="${idx}"]`)?.classList.add('active');
+  if (r.latitude) {
+    map.flyTo([r.latitude, r.longitude], 10, { duration: 0.8 });
+  }
+  showDetail(r);
+}
+
+// ===== 详情面板 =====
+async function showDetail(r) {
+  const panel = document.getElementById('detail-panel');
+  document.getElementById('detail-title').textContent = r.name;
+  const fclassName = {P:'居民地',A:'行政',H:'水文',T:'地形',S:'地点',U:'海底',V:'植被',R:'道路',L:'区域'}[r.fclass] || r.fclass || '-';
+  let html = `
+    <div class="detail-row"><span class="label">标准名</span><span class="value">${r.name}</span></div>
+    <div class="detail-row"><span class="label">数据源</span><span class="value">${r.src} / ${r.src_id}</span></div>
+    <div class="detail-row"><span class="label">坐标</span><span class="value">${r.latitude ? r.latitude.toFixed(6) + ', ' + r.longitude.toFixed(6) : '-'}</span></div>
+    <div class="detail-row"><span class="label">要素类</span><span class="value">${fclassName} (${r.fclass || '-'}.${r.fcode || '-'})</span></div>
+    <div class="detail-row"><span class="label">国家/地区</span><span class="value">${r.country_name || r.country_code || '-'}</span></div>
+    ${r.population ? `<div class="detail-row"><span class="label">人口</span><span class="value">${Number(r.population).toLocaleString()}</span></div>` : ''}
+    ${r.elevation ? `<div class="detail-row"><span class="label">海拔</span><span class="value">${r.elevation} m</span></div>` : ''}
+    ${r.timezone ? `<div class="detail-row"><span class="label">时区</span><span class="value">${r.timezone}</span></div>` : ''}
+    <div class="detail-row"><span class="label">优先级</span><span class="value">${r.base_priority} (${r.base_priority===1?'唯一权威':r.base_priority===2?'参考':'开源降级'})</span></div>
+  `;
+  // 获取别名
+  if (r.gaz_id) {
+    try {
+      const resp = await fetch(`${API_BASE}/lookup?src=${r.src}&src_id=${r.src_id}`);
+      const d = await resp.json();
+      if (d.result && d.result.aliases && d.result.aliases.length) {
+        const aliases = d.result.aliases.slice(0, 20);
+        html += `<div class="detail-row"><span class="label">别名</span><span class="value"><div class="alias-list">`;
+        aliases.forEach(a => {
+          const cls = a.lang === 'zh' ? 'zh' : a.lang === 'en' ? 'en' : '';
+          html += `<span class="alias-tag ${cls}" title="${a.lang || ''} ${a.kind || ''}">${a.name}</span>`;
+        });
+        html += `</div></span></div>`;
+      }
+    } catch(e) {}
+  }
+  document.getElementById('detail-body').innerHTML = html;
+  panel.style.display = 'block';
+}
+
+document.getElementById('detail-close').addEventListener('click', () => {
+  document.getElementById('detail-panel').style.display = 'none';
+});
+
+// ===== 地图点击反查 =====
+async function onMapClick(e) {
+  const { lat, lng } = e.latlng;
+  setStatus(`反查中 (${lat.toFixed(3)}, ${lng.toFixed(3)})...`, 'loading');
+  try {
+    const r = await fetch(`${API_BASE}/reverse?lat=${lat}&lng=${lng}&radius=10&limit=15`);
+    const data = await r.json();
+    const results = (data.results || []).map(x => ({
+      name: x.name, src: 'geonames', src_id: x.gaz_id, gaz_id: x.gaz_id,
+      latitude: x.lat, longitude: x.lon, fclass: x.fclass, fcode: x.fcode,
+      country_code: '', base_priority: 2, population: null
+    }));
+    currentResults = results;
+    renderResults(results);
+    markersLayer.clearLayers();
+    plotResults(results);
+    document.getElementById('results-count').textContent = `反查 ${results.length} 条 (10km)`;
+    setStatus(`反查完成：${results.length} 条`);
+    // 在点击位置加一个临时标记
+    L.circleMarker([lat, lng], { radius: 6, color: '#e67e22', fillColor: '#f39c12', fillOpacity: 0.8, weight: 2 }).addTo(markersLayer).bindPopup('反查中心点');
+  } catch(err) {
+    setStatus('反查失败', 'error');
+  }
+}
+
+// ===== 启动 =====
+initMap();
+fetch(API_BASE + '/suggest?q=__probe__&limit=1').then(r => r.ok ? setStatus('就绪 · 输入地名开始检索，或点击地图反查') : setStatus('检索服务未连接（需 :8089 API）· 地图浏览不受影响', 'error')).catch(() => setStatus('检索服务未连接（需 :8089 API）· 地图浏览不受影响', 'error'));
+</script>
+</body>
+</html>
