@@ -182,6 +182,18 @@ function basemapTiles(kind) {
   return [`${host}${kind}/{z}/{x}/{y}.png`];
 }
 
+/* 底图多源架构：每种底图独立 raster 源，切换只改 layer visibility、不动 setTiles——
+ * 各源瓦片缓存保留，来回切换秒开（旧单源 setTiles 每次清空整源缓存重下，是切换卡顿的根因） */
+const BM_DEFS = [
+  { kind: 'terrain',    id: 'bm-self-terrain',      online: false },
+  { kind: 'street',     id: 'bm-self-street',       online: false },
+  { kind: 'satellite',  id: 'bm-online-satellite',  online: true },
+  { kind: 'esristreet', id: 'bm-online-esristreet', online: true },
+  { kind: 'osm',        id: 'bm-online-osm',        online: true },
+];
+const BM_IDS = new Set(BM_DEFS.map(d => d.id));
+function bmReady() { return !!map && BM_DEFS.some(d => map.getSource(d.id)); }
+
 /* 卫星/影像底图下压低面状图层不透明度，避免色块遮死影像；切回自产底图时还原原始值 */
 const FILL_BASE = new Map();
 function dimFills(on) {
@@ -205,37 +217,32 @@ function applyBasemap(v) {
   if (sel && sel.value !== v) sel.value = v;              // 编程切换（自动化/调试）时同步显示
   syncBmSwitch(v);
   const noteEl = document.getElementById('bmSrc');
-  if (!map || !map.getSource('basemap-self')) {           // 地图尚未 setupLayers 完成：只记状态，等加载后补应用
-    curBm = v;
+  curBm = v;                                              // 无论地图就绪与否都先记状态，等加载后补应用
+  if (!bmReady()) {
     if (noteEl) noteEl.textContent = v === 'none' ? '底图：已关闭（仅显示业务图层）' : (ONLINE[v] ? ONLINE[v].note : LOCAL_NOTE);
     return;
   }
-  curBm = v;
-  if (v === 'none') {
-    map.setLayoutProperty('basemap-self', 'visibility', 'none');
-    map.setLayoutProperty('basemap-online', 'visibility', 'none');
-    if (noteEl) noteEl.textContent = '底图：已关闭（仅显示业务图层）';
-    dimFills(false);
-    return;
-  }
   const online = !!ONLINE[v];
-  map.setLayoutProperty('basemap-self', 'visibility', online ? 'none' : 'visible');
-  map.setLayoutProperty('basemap-online', 'visibility', online ? 'visible' : 'none');
-  map.getSource(online ? 'basemap-online' : 'basemap-self').setTiles(basemapTiles(v));
+  for (const d of BM_DEFS) map.setLayoutProperty(d.id, 'visibility', d.kind === v ? 'visible' : 'none');
   // Esri 高分影像在台湾区域可到 z19；自产瓦片实体到 z13（z14 全量），超出层级走 overzoom 平滑放大
   map.setMaxZoom(online ? 19 : 14);
-  if (noteEl) noteEl.textContent = online ? ONLINE[v].note : LOCAL_NOTE;
+  if (noteEl) noteEl.textContent = v === 'none' ? '底图：已关闭（仅显示业务图层）' : (online ? ONLINE[v].note : LOCAL_NOTE);
   dimFills(online);
 }
 
-/* 太空→街道 俯冲演示：Esri 高分影像上从全域视角连续飞到代表街区（对应样例视频效果） */
+/* 太空→街道 俯冲演示：Esri 高分影像上从全域视角连续飞到代表街区（对应样例视频效果）
+ * 预热：隐藏画布先跳到目标层级把 z17 瓦片拉进缓存，回起点后再起飞——旧逻辑到位后才请求高清瓦片，
+ * 落点要干等网络往返；预热后到位即清晰（idle 3.5s 超时兜底：瓦片加载失败也不阻塞起飞） */
 const DIVE_TARGET = {
   tw: { center: [121.5654, 25.0330], zoom: 17, label: '台北 101 周边街区' },
 };
 let diveBak = null;
+let bmWarm = false;                                      // 预热期间暂停错误回落计数，防预热失败误回落
 function diveDemo() {
-  if (!map || !map.getSource('basemap-self')) return;
+  if (!map || !bmReady()) return;
   applyBasemap('satellite');
+  const t = DIVE_TARGET.tw;
+  const from = { center: map.getCenter(), zoom: map.getZoom() };
   if (!diveBak) {                                   // 记录并暂时隐藏业务图层，影像俯冲更纯净
     diveBak = [];
     for (const L of LAYERS) if (map.getLayer(L.id)) {
@@ -244,14 +251,31 @@ function diveDemo() {
     }
     labelMarkers.forEach(m => { if (m.getElement()) m.getElement().style.display = 'none'; });
   }
-  map.once('moveend', () => {                       // 俯冲结束（或被打断）后恢复
+  const restore = () => {                           // 俯冲结束（或被打断）后恢复
     if (!diveBak) return;
     diveBak.forEach(([id, vis]) => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis); });
     labelMarkers.forEach(m => { if (m.getElement()) m.getElement().style.display = ''; });
     diveBak = null;
-  });
-  const t = DIVE_TARGET.tw;
-  map.flyTo({ center: t.center, zoom: t.zoom, duration: 9000, curve: 1.42, essential: true });
+  };
+  bmWarm = true;
+  const cv = map.getCanvasContainer();
+  const bakVis = cv.style.visibility;
+  cv.style.visibility = 'hidden';
+  map.jumpTo({ center: t.center, zoom: t.zoom });
+  let warmed = false;
+  const finish = () => {
+    if (warmed) return;
+    warmed = true;
+    cv.style.visibility = bakVis;
+    map.jumpTo(from);                             // 回起点（jumpTo 的 moveend 用于衔接起飞）
+    map.once('moveend', () => {
+      bmWarm = false;
+      map.once('moveend', restore);                // 预挂：flyTo 结束（或被打断）后恢复业务图层
+      map.flyTo({ center: t.center, zoom: t.zoom, duration: 9000, curve: 1.42, essential: true });
+    });
+  };
+  map.once('idle', finish);
+  setTimeout(finish, 3500);
 }
 
 /* 在线底图可达性探测：用 <img> 而非 fetch（瓦片服务无 CORS 头，fetch 会误判不可达） */
@@ -290,11 +314,12 @@ async function gateOnlineBasemaps() {
   sel.title = 'Esri 在线对照底图不可达：已自动禁用，自产底图为默认可用底图';
 }
 
-/* 在线底图运行期兜底：5 秒内连续 3 片加载失败即回落自产地形底图，避免现场长时间空白 */
+/* 在线底图运行期兜底：5 秒内连续 3 片加载失败即回落自产地形底图，避免现场长时间空白
+ * （bmWarm 期间俯冲预热主动拉取的失败不计入，避免误触发回落） */
 let bmErr = 0, bmErrTs = 0;
 function guardBasemapErrors() {
   map.on('error', e => {
-    if (!e || e.sourceId !== 'basemap-online' || !ONLINE[curBm]) return;
+    if (!e || !BM_IDS.has(e.sourceId) || !ONLINE[curBm] || bmWarm) return;
     const now = Date.now();
     if (now - bmErrTs > 5000) bmErr = 0;
     bmErrTs = now;
@@ -379,19 +404,17 @@ let SETUP = false;
 async function setupLayers() {
   if (SETUP || !map) return;
   SETUP = true;
-  // 自产瓦片与 Esri 在线底图分设两个栅格源并各自声明 maxzoom：
-  // 超出层级的部分由 MapLibre 平滑 overzoom 放大显示——若共用单源不声明 maxzoom，
-  // 深 zoom 会按缺失层级直接请求瓦片（自产 z14+ 无瓦 → 空白；Esri z20+ 无瓦 → 触发错误兜底）
-  map.addSource('basemap-self', { type: 'raster', tiles: basemapTiles('terrain'), tileSize: 256,
-    maxzoom: 13, bounds: [-180, -85, 180, 85] });
-  map.addSource('basemap-online', { type: 'raster', tiles: ONLINE.satellite.tiles, tileSize: 256,
-    maxzoom: 19, bounds: [-180, -85, 180, 85] });
+  // 底图多源：每种底图独立 raster 源并各自声明 maxzoom，超层级由 MapLibre overzoom 平滑放大——
+  // 切换底图只改 visibility，瓦片缓存保留；visibility none 的图层不参与渲染也不请求瓦片
   const bmInit = document.getElementById('basemap').value;
-  map.addLayer({ id: 'basemap-self', type: 'raster', source: 'basemap-self',
-    layout: { visibility: (!ONLINE[bmInit] && bmInit !== 'none') ? 'visible' : 'none' },
-    paint: { 'raster-resampling': 'nearest' } });        // 自产线划瓦片 overzoom 时保持边缘锐利
-  map.addLayer({ id: 'basemap-online', type: 'raster', source: 'basemap-online',
-    layout: { visibility: ONLINE[bmInit] ? 'visible' : 'none' } });
+  for (const d of BM_DEFS) {
+    map.addSource(d.id, { type: 'raster',
+      tiles: d.online ? ONLINE[d.kind].tiles : basemapTiles(d.kind),
+      tileSize: 256, maxzoom: d.online ? 19 : 13, bounds: [-180, -85, 180, 85] });
+    map.addLayer({ id: d.id, type: 'raster', source: d.id,
+      layout: { visibility: bmInit === d.kind ? 'visible' : 'none' },
+      paint: d.online ? {} : { 'raster-resampling': 'nearest' } });  // 自产线划瓦片 overzoom 保持边缘锐利
+  }
 
   // 先几何后面：fill → line → circle（数组顺序即叠放次序）
   // 离线快照并行预取（geoForRetry 带超时+重试）：任何一个请求挂起都只影响本层，不再拖死整图加载
@@ -624,7 +647,11 @@ function bindUI() {
   const diveBtn = document.getElementById('diveBtn');
   if (diveBtn) diveBtn.addEventListener('click', diveDemo);
   document.getElementById('fullTiles').addEventListener('change', () => {
-    const v = sel.value; if (v !== 'none') applyBasemap(v);   // 在线源不受全量瓦片开关影响
+    // 全量瓦片开关只影响自产底图源的瓦片地址；多源架构下需对各自产源显式 setTiles（在线源不受影响）
+    const host = (MODE === 'live' && document.getElementById('fullTiles').checked) ? TILE_HOST + '/' : '';
+    for (const d of BM_DEFS.filter(x => !x.online)) {
+      map.getSource(d.id).setTiles([`${host}${d.kind}/{z}/{x}/{y}.png`]);
+    }
   });
   const home = (REGION && REGION.map) || ISLAND;
   document.getElementById('resetView').addEventListener('click', () => map.flyTo({ center: home.center, zoom: home.zoom }));
