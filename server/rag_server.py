@@ -1113,9 +1113,11 @@ def ask(body: Ask):
     srcs.append("qwen3:8b 本地生成（Ollama）")
     result = {"intent": intent, "entities": ents, "answer": answer,
               "sources": srcs, "elapsed": round(time.time() - t0, 1)}
-    if len(_ASK_CACHE) >= _ASK_CACHE_MAX:
-        _ASK_CACHE.clear()
-    _ASK_CACHE[ckey] = (time.time(), result)
+    # 失败响应不入缓存：Ollama 宕机等临时故障恢复后，用户不应在 TTL 内一直吃到旧的失败答案
+    if "生成失败" not in answer:
+        if len(_ASK_CACHE) >= _ASK_CACHE_MAX:
+            _ASK_CACHE.clear()
+        _ASK_CACHE[ckey] = (time.time(), result)
     return result
 
 
