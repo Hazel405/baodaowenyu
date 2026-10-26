@@ -1004,7 +1004,12 @@ def ask(body: Ask):
         if not answer:
             answer = "（模型未生成正文——请重试或减小问题复杂度）"
     except Exception as e:
-        answer = f"生成失败: {str(e)[:100]}"
+        msg = str(e)
+        if "拒绝" in msg or "refused" in msg.lower():
+            answer = ("生成失败：本地模型服务 Ollama 未启动（127.0.0.1:11434）。"
+                      "检索与地图定位不受影响；请启动 Ollama（ollama serve）并拉取 qwen3:8b 后重试。")
+        else:
+            answer = f"生成失败: {msg[:100]}"
     srcs.append("qwen3:8b 本地生成（Ollama）")
     result = {"intent": intent, "entities": ents, "answer": answer,
               "sources": srcs, "elapsed": round(time.time() - t0, 1)}

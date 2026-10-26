@@ -122,10 +122,9 @@ async function geoForRetry(L) {
 }
 
 function circlePaint(L) {
-  const rad = ['interpolate', ['linear'], ['zoom'], 4, radAt(L, 4), 12, radAt(L, 12)];
-  const base = { 'circle-color': L.color, 'circle-radius': rad, 'circle-opacity': 0.88,
+  const base = { 'circle-color': L.color, 'circle-opacity': 0.88,
            'circle-stroke-color': '#fff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 12, 1.4] };
-  if (!L.themed) return base;
+  if (!L.themed) return Object.assign(base, { 'circle-radius': zoomRad(L, 1) });
   /* 兜底点判定：TW 快照兜底为 'Taiwan' 或含 'general' 的 GeoNames 串（GDELT 未落到城市、回退省级）。
    * 兜底点低透明+放大，真实城市落点保持原样式——一眼区分"落到了城市"与"只落到省" */
   const fb = ['any', ['==', ['get', 'place'], (REGION && REGION.short_zh) || ''],
@@ -134,14 +133,25 @@ function circlePaint(L) {
   return Object.assign(base, {
     'circle-color': ['match', ['get', 'theme'], ...pairs, '#6f4fb0'],
     'circle-opacity': ['case', fb, 0.25, 0.88],
-    'circle-radius': ['case', fb, ['*', rad, 1.5], rad],
+    /* 半径用纯 zoom 分级字面量端点：数据插值 stop 与 match color / case opacity 组合会触发
+       MapLibre 静默拒层（无异常无告警，events 曾因此从未上地图，时间轴播放无感）；
+       主题区分交给颜色 match + 透明度 case 已足够 */
+    'circle-radius': plainRad(L.base),
     'circle-stroke-opacity': ['case', fb, 0.12, 0.95],
   });
 }
-function radAt(L, z) {
-  if (!L.field) return L.base * (z > 8 ? 1.7 : 1);
+/* 常规点层 zoom 半径：顶层 zoom-interpolate，stop 输出为数据插值（peaks/ports 等常量色层验证合法） */
+function zoomRad(L, k) {
+  return ['interpolate', ['linear'], ['zoom'], 4, radAt(L, 4, k), 12, radAt(L, 12, k)];
+}
+/* 主题事件点 zoom 半径：纯字面量端点（与 match/case 组合安全） */
+function plainRad(base) {
+  return ['interpolate', ['linear'], ['zoom'], 4, base * 0.7, 12, base * 2.1];
+}
+function radAt(L, z, k = 1) {
+  if (!L.field) return L.base * (z > 8 ? 1.7 : 1) * k;
   return ['interpolate', ['linear'], ['coalesce', ['get', L.field], 0],
-    0, L.base * (z > 8 ? 1.1 : 0.7), 3000000, L.base * (z > 8 ? 3.4 : 2.1)];
+    0, L.base * (z > 8 ? 1.1 : 0.7) * k, 3000000, L.base * (z > 8 ? 3.4 : 2.1) * k];
 }
 function layerObj(L) {
   const lay = L.geom === 'line' ? { 'line-join': 'round', 'line-cap': 'round', visibility: L.on ? 'visible' : 'none' }
@@ -267,12 +277,10 @@ function diveDemo() {
     if (warmed) return;
     warmed = true;
     cv.style.visibility = bakVis;
-    map.jumpTo(from);                             // 回起点（jumpTo 的 moveend 用于衔接起飞）
-    map.once('moveend', () => {
-      bmWarm = false;
-      map.once('moveend', restore);                // 预挂：flyTo 结束（或被打断）后恢复业务图层
-      map.flyTo({ center: t.center, zoom: t.zoom, duration: 9000, curve: 1.42, essential: true });
-    });
+    map.jumpTo(from);                             // 回起点（jumpTo 同步完成，其 moveend 早于下方 once 触发，不能用它衔接起飞）
+    bmWarm = false;
+    map.once('moveend', restore);                  // 预挂：flyTo 结束（或被打断）后恢复业务图层
+    map.flyTo({ center: t.center, zoom: t.zoom, duration: 9000, curve: 1.42, essential: true });
   };
   map.once('idle', finish);
   setTimeout(finish, 3500);
@@ -439,10 +447,31 @@ async function setupLayers() {
       if (!L.liveOnly && !L.missing) L.missing = true;     // liveOnly 是预期跳过，不算加载失败
     }
   }
+  /* 图层完整性自检：首屏加载窗口内个别层的 addLayer 可能静默未生效（源在、层不在、无异常无 missing 标记），
+     循环后统一复查并自愈一次，避免"面板有层、地图上没有"的隐性问题（典型受影响：events → 时间轴播放无感） */
+  for (const L of LAYERS) {
+    if (MODE === 'live' && L.file && !L.liveOnly && !L.missing
+        && map.getSource(L.id) && !map.getLayer(L.id)) {
+      try { map.addLayer(layerObj(L)); bindPopup(L); }
+      catch (e) { console.warn('layer retry skip', L.id, e); }
+    }
+  }
   await addCityLabels(dataMap.get('cities'));
   buildLayerPanel();                       // 缺层信息回填面板
   applyBasemap(curBm);                     // 补应用加载期间已选中的底图 + 校正面层不透明度
   document.getElementById('spin').style.display = 'none';
+  /* 自产瓦片物理封顶 z13：超过 z13.5 继续放大只是单像素 overzoom 拉伸，画面糊成色块。
+     此时页脚引导切换在线对照，而不是让用户对着糊图以为是加载问题；缩回正常层级自动恢复署名 */
+  map.on('zoomend', () => {
+    if (curBm === 'none' || ONLINE[curBm]) return;
+    const noteEl = document.getElementById('bmSrc');
+    if (!noteEl) return;
+    if (map.getZoom() > 13.5) {
+      noteEl.textContent = '提示：自产瓦片最高 z13，当前为算法放大画面；查看街区细节请切换 Esri / OSM 在线对照底图';
+    } else {
+      applyBasemap(curBm);
+    }
+  });
   runShot();                               // URL ?shot= 镜头直达：SETUP 完成后一次性摆好录制状态
 }
 
@@ -602,6 +631,9 @@ function tlPlay() {
   evL.on = true;
   const cb = document.querySelector('#layerList input[data-id="events"]'); if (cb) cb.checked = true;
   map.setLayoutProperty('events', 'visibility', 'visible');
+  /* 视野引导：事件动画的意义在全岛尺度看"逐月生长"；用户停在街区级深缩放时，
+     视野内往往只有零星小点，播放就像没反应——开播自动拉回到全域 */
+  if (map.getZoom() > 10) map.flyTo({ center: ISLAND.center, zoom: ISLAND.zoom, duration: 1500 });
   const lo = document.getElementById('tlMin'), hi = document.getElementById('tlMax');
   lo.value = 0; hi.value = 0; applyTimeline();
   document.getElementById('tlPlay').textContent = '⏸ 暂停';
