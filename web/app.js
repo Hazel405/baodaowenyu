@@ -240,20 +240,25 @@ function applyBasemap(v) {
   dimFills(online);
 }
 
-/* 太空→街道 俯冲演示：Esri 高分影像上从全域视角连续飞到代表街区（对应样例视频效果）
- * 预热：隐藏画布先跳到目标层级把 z17 瓦片拉进缓存，回起点后再起飞——旧逻辑到位后才请求高清瓦片，
- * 落点要干等网络往返；预热后到位即清晰（idle 3.5s 超时兜底：瓦片加载失败也不阻塞起飞） */
+/* 太空→街道 俯冲演示：从全域视角连续飞到代表街区（对应样例视频效果）
+ * 预热：隐藏画布先跳到目标层级把高清瓦片拉进缓存，回起点后再起飞——旧逻辑到位后才请求高清瓦片，
+ * 落点要干等网络往返；预热后到位即清晰（idle 3.5s 超时兜底：瓦片加载失败也不阻塞起飞）
+ * Q2：俯冲尊重当前底图——在线底图（Esri/OSM）有 z17 高清数据俯到 z17；自产瓦片物理封顶 z13
+ * （z14 全量），俯到 14.5 即极限；无底图时临时切 Esri 卫星再俯 */
 const DIVE_TARGET = {
-  tw: { center: [121.5654, 25.0330], zoom: 17, label: '台北 101 周边街区' },
+  tw: { center: [121.5654, 25.0330], label: '台北 101 周边街区' },
 };
 let diveBak = null;
 let bmWarm = false;                                      // 预热期间暂停错误回落计数，防预热失败误回落
 function diveDemo() {
   if (!map || !bmReady()) return;
-  applyBasemap('satellite');
+  let online = !!ONLINE[curBm];
+  if (curBm === 'none') { applyBasemap('satellite'); online = true; }   // 无底图：借 Esri 卫星完成俯冲
+  const z = online ? 17 : 14.5;
+  if (!online) map.setMaxZoom(15);                       // 自产底图缺省 maxZoom=14，俯冲期放宽（落地后 applyBasemap 还原）
   const t = DIVE_TARGET.tw;
   const from = { center: map.getCenter(), zoom: map.getZoom() };
-  if (!diveBak) {                                   // 记录并暂时隐藏业务图层，影像俯冲更纯净
+  if (!diveBak) {                                   // 记录并暂时隐藏业务图层，俯冲更纯净
     diveBak = [];
     for (const L of LAYERS) if (map.getLayer(L.id)) {
       diveBak.push([L.id, map.getLayoutProperty(L.id, 'visibility') || 'visible']);
@@ -266,21 +271,25 @@ function diveDemo() {
     diveBak.forEach(([id, vis]) => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis); });
     labelMarkers.forEach(m => { if (m.getElement()) m.getElement().style.display = ''; });
     diveBak = null;
+    /* 还原俯冲期放宽的 maxZoom + 页脚署名；但自产底图落点在 z14.5 时不收口——
+       立即 applyBasemap 会把 maxZoom 收回 14，把落点相机当场夹回 z14 */
+    if (ONLINE[curBm] || map.getZoom() <= 14) applyBasemap(curBm);
   };
   bmWarm = true;
   const cv = map.getCanvasContainer();
   const bakVis = cv.style.visibility;
   cv.style.visibility = 'hidden';
-  map.jumpTo({ center: t.center, zoom: t.zoom });
+  map.jumpTo({ center: t.center, zoom: z });
   let warmed = false;
   const finish = () => {
     if (warmed) return;
     warmed = true;
     cv.style.visibility = bakVis;
     map.jumpTo(from);                             // 回起点（jumpTo 同步完成，其 moveend 早于下方 once 触发，不能用它衔接起飞）
+    if (!online) map.setMaxZoom(15);              // 回起点后再放宽：预热期间（如 zoomend 钩子）任何 maxZoom 收口都在此起效前被覆盖
     bmWarm = false;
     map.once('moveend', restore);                  // 预挂：flyTo 结束（或被打断）后恢复业务图层
-    map.flyTo({ center: t.center, zoom: t.zoom, duration: 9000, curve: 1.42, essential: true });
+    map.flyTo({ center: t.center, zoom: z, duration: 9000, curve: 1.42, essential: true });
   };
   map.once('idle', finish);
   setTimeout(finish, 3500);
@@ -372,7 +381,7 @@ async function boot() {
   document.title = `宝岛文舆 · 开源 GIS 地志智询系统 — 网页查看端（${(REGION && REGION.short_zh) || '台湾'}）`;
   const dv = DIVE_TARGET.tw;
   const diveBtn0 = document.getElementById('diveBtn');
-  if (diveBtn0) diveBtn0.title = `从全域视角连续俯冲到${dv.label}（Esri 高分影像，约 9 秒）`;
+  if (diveBtn0) diveBtn0.title = `从全域视角连续俯冲到${dv.label}（跟随当前底图清晰度：在线底图到 z17，自产底图到 z14.5，约 9 秒）`;
   MODE = await detectMode();
   const badge = document.getElementById('modeBadge');
   badge.textContent = MODE === 'live' ? '实时模式 · /mvt 直读 PostGIS + 问答服务在线' : '离线模式 · GeoJSON 快照 + 随包瓦片';
@@ -469,7 +478,7 @@ async function setupLayers() {
     if (map.getZoom() > 13.5) {
       noteEl.textContent = '提示：自产瓦片最高 z13，当前为算法放大画面；查看街区细节请切换 Esri / OSM 在线对照底图';
     } else {
-      applyBasemap(curBm);
+      noteEl.textContent = LOCAL_NOTE;   // 只还原文案，不碰 maxZoom/visibility（applyBasemap 会在俯冲回起点时把 maxZoom 收回 14）
     }
   });
   runShot();                               // URL ?shot= 镜头直达：SETUP 完成后一次性摆好录制状态
