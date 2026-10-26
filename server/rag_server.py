@@ -168,7 +168,7 @@ def ensure_pg():
             time.sleep(1)
 
 
-def ollama_gen(model, prompt, timeout=900):
+def ollama_gen(model, prompt, timeout=120):
     req = urllib.request.Request(OLLAMA + "/api/generate",
         data=json.dumps({"model": model, "prompt": prompt, "stream": False,
                          "think": False, "keep_alive": "30m",
@@ -952,10 +952,21 @@ def api_hazard(body: Hazard):
                     "未覆盖单元不作推测、不作填补。"}
 
 
+# 问答结果短缓存：相同问题（归一化去空白后）10 分钟内直接命中——评委重复提问、演示重开
+# 不必重等 5–25 s 本地推理；容量到 200 条整体清空（比赛场景提问量小，无需真 LRU）
+_ASK_CACHE = {}
+_ASK_CACHE_TTL = 600
+_ASK_CACHE_MAX = 200
+
+
 @app.post("/api/ask")
 def ask(body: Ask):
     t0 = time.time()
     q = body.question.strip()
+    ckey = re.sub(r"\s+", "", q)
+    hit = _ASK_CACHE.get(ckey)
+    if hit and time.time() - hit[0] < _ASK_CACHE_TTL:
+        return hit[1]
     ensure_pg()
     intent = classify(q)
     ents = extract_entities(q)
@@ -995,8 +1006,12 @@ def ask(body: Ask):
     except Exception as e:
         answer = f"生成失败: {str(e)[:100]}"
     srcs.append("qwen3:8b 本地生成（Ollama）")
-    return {"intent": intent, "entities": ents, "answer": answer,
-            "sources": srcs, "elapsed": round(time.time() - t0, 1)}
+    result = {"intent": intent, "entities": ents, "answer": answer,
+              "sources": srcs, "elapsed": round(time.time() - t0, 1)}
+    if len(_ASK_CACHE) >= _ASK_CACHE_MAX:
+        _ASK_CACHE.clear()
+    _ASK_CACHE[ckey] = (time.time(), result)
+    return result
 
 
 @app.get("/api/health")

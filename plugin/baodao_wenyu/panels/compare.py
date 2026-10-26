@@ -7,7 +7,7 @@ from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QSlider, QLa
 from qgis.PyQt.QtCore import Qt
 from qgis.core import QgsProject, QgsRasterLayer
 
-TILE_BASE = "http://127.0.0.1:8090"
+TILE_BASE = os.environ.get("BAODAO_TILES", "http://127.0.0.1:8090")
 def _find_basemap():
     """自动定位 basemap 根：BAODAO_HOME → 常见安装位置扫描 → 原开发机路径兜底。"""
     import glob as _g

@@ -13,7 +13,7 @@ from .panels.qa import QaDialog
 from .panels.compare import CompareDialog
 from .panels.analysis import AnalysisDialog
 
-TILE_BASE = "http://127.0.0.1:8090"
+TILE_BASE = os.environ.get("BAODAO_TILES", "http://127.0.0.1:8090")
 ICON = os.path.join(os.path.dirname(__file__), "icon.png")
 
 
