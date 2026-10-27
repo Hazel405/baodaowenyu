@@ -39,3 +39,9 @@ submission/
 
 # IDE 临时目录
 .trae-html-share-packages/
+
+# 误拷贝残留（历史会话路径拼接错误产物，见 10-27 清理）
+docs_internal/
+宝岛文娱/
+
+_to_delete_*/
