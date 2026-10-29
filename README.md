@@ -8,7 +8,8 @@
 
 ```
 baodaowenyu/
-├── README.md / LICENSE
+├── README.md / LICENSE / LICENSE-MIT / NOTICE
+├── 技术报告_宝岛文舆.docx / .pdf   ★ 技术报告终版（20 页，九章大纲，含团队编号）
 ├── plugin\baodao_wenyu\      ★ 作品主体：QGIS 插件（览/询/较/析 四工作台，GPL-2.0-or-later）
 │   ├── metadata.txt plugin.py
 │   └── panels\ browse.py qa.py compare.py analysis.py
