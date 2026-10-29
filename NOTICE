@@ -1,0 +1,41 @@
+宝岛文舆 —— 第三方资源署名与许可摘要（NOTICE）
+================================================
+
+本作品基于开源软件与开放数据构建，权利边界如下。完整条款逐项见
+docs/开源及第三方资源使用清单.md（21 条登记，含义务与自主开发边界）。
+
+一、代码许可分层
+  - QGIS 插件、网页查看端、服务端编排（plugin/ server/ web/）：
+      GPL-2.0-or-later（见 LICENSE）
+  - 数据管线、DEM 派生与评测脚本（pipeline/ eval/ scripts/serve_tiles.py）：
+      MIT（见 LICENSE-MIT）
+  - 数据资产（各表与随包快照）不随代码授权，按下述各源许可执行。
+
+二、数据源署名（随包分发部分）
+  - GeoNames（CC-BY 4.0）：gaz_tw 45,572 条、gaz_alias 43,494 条。
+    署名 "GeoNames" 并注明修改。
+  - OpenStreetMap（ODbL 1.0）：路网/水系/建筑/POI/乡镇界派生表。
+    署名 "© OpenStreetMap contributors"；派生数据库按 ODbL 义务开放，
+    原始 pbf/Overpass 抽取文件不整体再分发。
+  - WorldPop 2020（CC-BY 4.0）：22 个县级单元人口口径，合计 24,064,538。
+    署名 "WorldPop" 并注明版本（2020，100 m 栅格）。
+  - NASA SRTM（公共领域，含 Terrarium 瓦片）：30 m DEM 及派生分析。
+  - GDELT Event Database 1.0（官方开放使用条款：学术、商业、政府用途
+    均可无限制免费使用；任何使用或再分发须引用 GDELT Project 并附
+    https://www.gdeltproject.org/ 链接）：事件时序 15,295 条。
+  - OpenTopoData（srtm30m，服务端 MIT、数据公共领域）：仅用于 DEM 空洞
+    修补采样，不构成运行期在线依赖。
+
+三、仅在线引用、不落盘不分发
+  - Esri World Imagery / World Street Map（Esri 端点使用条款，须署名，
+    禁止批量导出再分发）；
+  - OpenStreetMap 标准瓦片（ODbL，遵守 OSMF 瓦片使用政策）。
+  以上仅作为网页端可选对照底图由客户端实时引用，署名已写入页脚。
+
+四、不随包分发
+  - GADM 行政边界（非商业许可，仅存档对照）；
+  - 日治时期地形图（公共领域扫描件，受馆藏摆渡限制）；
+  - 模型权重（qwen3:8b、bge-m3，依各自上游许可本地拉取）；
+  - 数据库转储与自产瓦片金字塔（体积原因，提供重建脚本）。
+
+宝岛文舆团队 · 2026-10-29

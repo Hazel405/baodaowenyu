@@ -2,7 +2,7 @@
 
 | 资产 | 位置 | 大小 | 说明 |
 |---|---|---|---|
-| PostgreSQL 18.6 + PostGIS 3.6.2 | 运行实例（端口 5433，库 `tw`）；**归档转储 `data\db\tw_20261001.dump`（51MB，73 张表定义）** | — | 20 表 ≈37 万条（民用口径已剔除非民用要素）。恢复：`createdb tw && pg_restore -d tw data\db\tw_20261001.dump`（需先装同版本 PostGIS 并 `CREATE EXTENSION postgis;`） |
+| PostgreSQL 18.6 + PostGIS 3.6.2 | 运行实例（端口 5433，库 `tw`）；**归档转储 `data\db\tw_20261001.dump`（51MB，73 张表定义）** | — | 20 表 ≈48 万条（按 12 类要素加总 482,916 条，与技术报告一致）。恢复：`createdb tw && pg_restore -d tw data\db\tw_20261001.dump`（需先装同版本 PostGIS 并 `CREATE EXTENSION postgis;`） |
 | 原始数据 | `data\raw`（GeoNames TW.txt、Overpass JSON、GDELT CSV、WorldPop TIF、DEM、dem_patched.tif；*.npy 中间产物不入库） | ~1GB | 以"来源 + 构建脚本"方式复现，不整体再分发（ODbL/研究用途条款） |
 | DEM 派生层 | `data\derived`（slope/aspect/flowacc/stream_tier/mobility/contours/dem_stats） | ~280MB | 公共领域 SRTM 衍生，可随包（报告注明方法链） |
 | 瓦片金字塔 | `basemap\`（street z0-13 20,854 张 / terrain z0-12 2,853 张 / hillshade 中间产品 2,853 张） | ~120MB | 全部自产，可再分发；服务 `server\serve_tiles.py` |
