@@ -1,0 +1,43 @@
+MIT License
+
+Copyright (c) 2026 Baodao WenYu Team (competition team)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Scope of this grant: the data-pipeline scripts (pipeline/), evaluation scripts
+(eval/) and tile-serving script (server/serve_tiles.py) of the "宝岛文舆"
+project. The QGIS plugin (plugin/) is NOT covered by this file; it is licensed
+under GPL-2.0-or-later, see the LICENSE file. Data assets carry their own
+licenses and are covered by neither file: OSM-derived data (ODbL), GeoNames and
+WorldPop (CC-BY 4.0), SRTM (public domain), GDELT (open terms: unlimited use of
+any kind without fee, citation to the GDELT Project and a link to
+https://www.gdeltproject.org/ required). Model weights (qwen3, bge-m3) are
+fetched locally under their own licenses (Apache-2.0/MIT) and never
+redistributed in this package.
+
+Offline snapshots under web/data/: the layers derived from OpenStreetMap
+(county and town boundaries, settlements, ports, water features, event points and
+their location attributes) constitute a Derivative Database under ODbL 1.0 and
+are made available as a whole under ODbL 1.0, with attribution
+"(c) OpenStreetMap contributors" - see https://www.openstreetmap.org/copyright.
+Self-computed attributes bundled in the same files (population statistics,
+terrain-derived indicators) are not Subject Data of ODbL, but are not separated
+from these files.
+
+See docs/开源及第三方资源使用清单.md for the per-source obligation matrix.

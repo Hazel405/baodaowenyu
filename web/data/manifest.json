@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-23 18:29:27",
+ "generated": "2026-10-29 23:17:39",
  "note": "离线快照：数据源见 data/DATA_SOURCES.md；实时模式请启服务走 /mvt 与 /api/ask",
  "region": "tw",
  "crs": "EPSG:4326",
@@ -8,7 +8,7 @@
    "label": "县市人口",
    "kind": "polygon",
    "count": 22,
-   "bytes": 88885
+   "bytes": 88924
   },
   "county_line": {
    "label": "县市界",
@@ -26,7 +26,7 @@
    "label": "主要城市",
    "kind": "point",
    "count": 20,
-   "bytes": 2826
+   "bytes": 2850
   },
   "places": {
    "label": "聚落点（万人以上）",
@@ -49,15 +49,15 @@
   "power": {
    "label": "电厂",
    "kind": "point",
-   "count": 506,
-   "bytes": 74333
+   "count": 501,
+   "bytes": 73564
   },
   "events": {
    "label": "事件点",
    "kind": "point",
    "count": 5960,
-   "bytes": 1029664
+   "bytes": 1024486
   }
  },
- "total_bytes": 1805951
+ "total_bytes": 1800067
 }

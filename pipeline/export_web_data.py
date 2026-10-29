@@ -11,7 +11,10 @@
 设计：离线模式只需"能看懂的骨架"——一级行政区人口面、界线、主要聚落、设施点与事件点；
       道路/水系由自渲街道瓦片承担视觉信息，不重复导出，避免包体膨胀。
       坐标精度 4 位小数（≈11 m），多边形按层级简化，逐层设要素上限。
-白名单：只导出民用要素；osm_restricted 等非民用表一律不出现在此脚本与任何接口中。
+白名单：只导出民用要素。《规范》禁止表示的受限要素在入库阶段即剔除（库内不设对应要素表）；
+      核电站在本脚本按 fuel 与名称双重排除（《公开地图内容表示规范》第二十条）；
+      事件地名字段统一输出规范中文行政区（中国台湾省××县市／福建省金门县、连江县（马祖）），
+      任何残留英文国名／地区名的取值一律回落为「中国台湾省」，不出现在快照中。
 """
 import argparse
 import json
@@ -34,9 +37,14 @@ def layer_sqls():
     """按区域配置生成各层导出 SQL（模式前缀与时间轴范围来自 config/region_<code>.json）。"""
     start, end = REGION["timeline"]["start"], REGION["timeline"]["end"]
     return [
+    # 金门、连江（马祖）按《公开地图内容表示规范》与 GB/T 35764 附录 A.2 作福建省岛屿表示，注记加隶属括注
     ("pop_county", f"{REGION['admin']['level1']}人口", "polygon", f"""
         SELECT ST_Simplify(geom, 0.0015) AS geom,
-               jsonb_build_object('name', county_cn, 'pop', pop) AS props
+               jsonb_build_object('name',
+                   CASE WHEN county_cn ~ '金門|金门' THEN '金門縣（福建省）'
+                        WHEN county_cn ~ '連江|连江' THEN '連江縣（馬祖，福建省）'
+                        ELSE county_cn END,
+                   'pop', pop) AS props
         FROM {S}.pop_county WHERE geom IS NOT NULL"""),
     ("county_line", f"{REGION['admin']['level1']}界", "line", f"""
         SELECT ST_Simplify(ST_Boundary(geom), 0.0012) AS geom,
@@ -46,8 +54,11 @@ def layer_sqls():
         SELECT ST_Simplify(geom, 0.0008) AS geom,
                jsonb_build_object('name', town, 'pop', pop) AS props
         FROM {S}.pop_town WHERE geom IS NOT NULL"""),
+    # 台北按《公开地图内容表示规范》八（一）以省级行政中心标注
     ("cities", "主要城市", "point", f"""
-        SELECT geom, jsonb_build_object('name', name_zh, 'pop', population, 'kind', 'city') AS props
+        SELECT geom, jsonb_build_object('name',
+                   CASE WHEN name_zh = '台北' THEN '台北（省级行政中心）' ELSE name_zh END,
+                   'pop', population, 'kind', 'city') AS props
         FROM {S}.cities_major ORDER BY population DESC NULLS LAST LIMIT 40"""),
     ("places", "聚落点（万人以上）", "point", f"""
         SELECT geom, jsonb_build_object('name', name, 'pop', population, 'kind', fclass) AS props
@@ -62,11 +73,17 @@ def layer_sqls():
         FROM {S}.ports ORDER BY name NULLS LAST LIMIT 800"""),
     ("power", "电厂", "point", f"""
         SELECT geom, jsonb_build_object('name', name, 'fuel', fuel, 'cap_mw', cap_mw) AS props
-        FROM {S}.power_capacity ORDER BY cap_mw DESC NULLS LAST LIMIT 520"""),
+        FROM {S}.power_capacity
+        WHERE COALESCE(fuel, '') NOT IN ('nuclear', 'fission')
+          AND (name IS NULL OR name !~* '核|nuclear')
+        ORDER BY cap_mw DESC NULLS LAST LIMIT 520"""),
     # 事件点：按月各取提及数 Top250，覆盖与区域配置 timeline 一致（台湾库 2024-09 之前仅零散补录，不入快照）
+    # place 字段：入库时已归一为规范中文行政区；此处再加一道守卫，任何含英文字母的残留取值回落「中国台湾省」
     ("events", "事件点", "point", f"""
         SELECT geom, jsonb_build_object('date', to_char(sqldate, 'YYYY-MM-DD'), 'theme', root_name,
-                                        'mentions', mentions, 'place', geo_name) AS props
+                                        'mentions', mentions,
+                                        'place', CASE WHEN geo_name ~ '[A-Za-z]' THEN '中国台湾省'
+                                                      ELSE COALESCE(geo_name, '中国台湾省') END) AS props
         FROM (SELECT e.*, row_number() OVER (PARTITION BY to_char(sqldate, 'YYYY-MM')
                                              ORDER BY mentions DESC NULLS LAST) AS rn
               FROM {S}.events e
