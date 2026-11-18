@@ -3,6 +3,10 @@
 > 第八届 AIC 算法主题赛（AI+开源）· 方向三「开源项目改进与生态贡献」参赛作品
 > 作品形态：**QGIS 插件（主体）** + 二次开发项目 + 数据/知识工具
 > 一句话：给开源 QGIS 补上"中国台湾省人文地理数据底座 + 防幻觉地志问答 + 历史舆图叠合"三件中文生态没有的事。
+## 仓库地址
+
+- **Gitee 主仓库**：<https://gitee.com/baodaowenyu/baodaowenyu>
+- **GitHub 镜像**：<https://github.com/Hazel405/baodaowenyu>（与 Gitee 主仓库保持同步，提交历史一致）
 
 ## 目录结构（按开源归档组织）
 
