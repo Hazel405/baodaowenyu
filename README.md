@@ -13,7 +13,7 @@
 ```
 baodaowenyu/
 ├── README.md / LICENSE / LICENSE-MIT / NOTICE
-├── 技术报告_宝岛文舆.docx / .pdf   ★ 技术报告定稿（18 页：正文 13 页 + 附录 5 页，九章大纲，含团队编号）
+├── 技术报告_宝岛文舆.docx / .pdf   ★ 技术报告（.pdf 为半决赛提交版，19 页 = 封面 1 + 目录 1 + 正文 13 页 + 附录 4 页，2026-11，含团队编号；.docx 为初赛版源文件）
 ├── plugin\baodao_wenyu\      ★ 作品主体：QGIS 插件（览/询/较/析 四工作台，GPL-2.0-or-later）
 │   ├── metadata.txt plugin.py
 │   └── panels\ browse.py qa.py compare.py analysis.py
